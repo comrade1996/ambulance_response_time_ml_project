@@ -162,12 +162,17 @@ Current behavior:
 The app uses:
 
 ```text
+runtime.txt
+requirements.txt
 data/processed/ems_training_dataset_100000.csv
 outputs/models/linear_regression.joblib
 outputs/models/random_forest_regressor.joblib
 outputs/reports/case_level_model_predictions.csv
 outputs/reports/model_comparison.csv
 ```
+
+Deployment uses Python 3.11 through `runtime.txt`. Package versions are pinned
+in `requirements.txt` so the saved `.joblib` model files can be loaded reliably.
 
 ## Deployment Notes
 

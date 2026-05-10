@@ -29,6 +29,8 @@ Lower MAE and RMSE are better. The app always shows both model predictions.
 
 ```text
 streamlit_app.py
+runtime.txt
+requirements.txt
 data/processed/ems_training_dataset_100000.csv
 outputs/models/linear_regression.joblib
 outputs/models/random_forest_regressor.joblib
@@ -53,6 +55,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
+
+The deployed app should use Python 3.11 and the pinned package versions in
+`requirements.txt`. This is important because the `.joblib` model files were
+trained with specific `scikit-learn` and `joblib` versions.
 
 ## Train Both Models
 
@@ -153,7 +159,8 @@ python main.py predict \
 5. Choose the repository.
 6. Use branch `main`.
 7. Use main file path `streamlit_app.py`.
-8. Deploy.
+8. In advanced settings, choose Python 3.11 if Streamlit asks for a Python version.
+9. Deploy.
 
 After deployment, Streamlit will give a URL like:
 

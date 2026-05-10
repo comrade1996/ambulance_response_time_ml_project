@@ -26,6 +26,7 @@ The Streamlit app needs these files in the GitHub repository:
 
 ```text
 streamlit_app.py
+runtime.txt
 requirements.txt
 .streamlit/config.toml
 data/processed/ems_training_dataset_100000.csv
@@ -81,8 +82,10 @@ main
 streamlit_app.py
 ```
 
-9. Optional: choose a custom app URL.
-10. Click `Deploy`.
+9. Open advanced settings if shown.
+10. Select Python 3.11.
+11. Optional: choose a custom app URL.
+12. Click `Deploy`.
 
 After deployment, Streamlit gives a public URL like:
 
@@ -137,14 +140,18 @@ outputs/reports/model_comparison.csv
 If dependencies fail, confirm `requirements.txt` includes:
 
 ```text
-streamlit
-pandas
-numpy
-scikit-learn
-matplotlib
-joblib
-openpyxl
+pandas==2.3.3
+numpy==2.0.2
+scikit-learn==1.6.1
+matplotlib==3.9.4
+joblib==1.5.3
+openpyxl==3.1.5
+streamlit==1.50.0
 ```
+
+If the app fails while loading `.joblib` model files, redeploy after confirming
+that `runtime.txt` contains `python-3.11`. The model files need package versions
+close to the training environment.
 
 If the app is slow on first load, wait for Streamlit to download dependencies
 and load the model files.
