@@ -56,9 +56,10 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-The deployed app should use Python 3.11 and the pinned package versions in
-`requirements.txt`. This is important because the `.joblib` model files were
-trained with specific `scikit-learn` and `joblib` versions.
+On Streamlit Cloud, the app first tries to load the saved `.joblib` models. If
+the cloud runtime uses a newer `scikit-learn` version and the saved models
+cannot be opened, the app automatically retrains both models from the saved
+100,000-row dataset and continues running.
 
 ## Train Both Models
 
@@ -159,8 +160,7 @@ python main.py predict \
 5. Choose the repository.
 6. Use branch `main`.
 7. Use main file path `streamlit_app.py`.
-8. In advanced settings, choose Python 3.11 if Streamlit asks for a Python version.
-9. Deploy.
+8. Deploy.
 
 After deployment, Streamlit will give a URL like:
 

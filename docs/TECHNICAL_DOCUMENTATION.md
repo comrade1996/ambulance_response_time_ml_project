@@ -171,8 +171,10 @@ outputs/reports/case_level_model_predictions.csv
 outputs/reports/model_comparison.csv
 ```
 
-Deployment uses Python 3.11 through `runtime.txt`. Package versions are pinned
-in `requirements.txt` so the saved `.joblib` model files can be loaded reliably.
+During deployment, the app first tries to load the saved `.joblib` model files.
+If the cloud runtime cannot unpickle them because of a package-version mismatch,
+the app retrains both models from the saved 100,000-row dataset and uses those
+runtime-trained models for prediction.
 
 ## Deployment Notes
 

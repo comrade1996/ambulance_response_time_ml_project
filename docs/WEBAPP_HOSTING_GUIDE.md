@@ -82,10 +82,8 @@ main
 streamlit_app.py
 ```
 
-9. Open advanced settings if shown.
-10. Select Python 3.11.
-11. Optional: choose a custom app URL.
-12. Click `Deploy`.
+9. Optional: choose a custom app URL.
+10. Click `Deploy`.
 
 After deployment, Streamlit gives a public URL like:
 
@@ -140,18 +138,18 @@ outputs/reports/model_comparison.csv
 If dependencies fail, confirm `requirements.txt` includes:
 
 ```text
-pandas==2.3.3
-numpy==2.0.2
-scikit-learn==1.6.1
-matplotlib==3.9.4
-joblib==1.5.3
-openpyxl==3.1.5
-streamlit==1.50.0
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.3
+matplotlib>=3.7
+joblib>=1.3
+openpyxl>=3.1
+streamlit>=1.35
 ```
 
-If the app fails while loading `.joblib` model files, redeploy after confirming
-that `runtime.txt` contains `python-3.11`. The model files need package versions
-close to the training environment.
+If Streamlit Cloud uses a newer `scikit-learn` version and cannot open the
+saved `.joblib` files, the app automatically retrains both models from
+`data/processed/ems_training_dataset_100000.csv` during startup.
 
 If the app is slow on first load, wait for Streamlit to download dependencies
 and load the model files.

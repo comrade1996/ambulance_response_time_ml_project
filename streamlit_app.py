@@ -7,6 +7,9 @@ import joblib
 import pandas as pd
 import streamlit as st
 
+from src.ambulance_response_time_ml.data import make_model_frame
+from src.ambulance_response_time_ml.modeling import make_models
+
 
 ROOT = Path(__file__).resolve().parent
 TRAINING_DATA_PATH = ROOT / "data" / "processed" / "ems_training_dataset_100000.csv"
@@ -166,11 +169,26 @@ def load_model_comparison() -> pd.DataFrame:
 
 
 @st.cache_resource(show_spinner=False)
-def load_models() -> dict[str, object]:
-    return {
-        "Linear Regression": joblib.load(LINEAR_MODEL_PATH),
-        "Random Forest Regressor": joblib.load(RANDOM_FOREST_MODEL_PATH),
-    }
+def load_models() -> tuple[dict[str, object], str]:
+    try:
+        return (
+            {
+                "Linear Regression": joblib.load(LINEAR_MODEL_PATH),
+                "Random Forest Regressor": joblib.load(RANDOM_FOREST_MODEL_PATH),
+            },
+            "ملفات النماذج المحفوظة",
+        )
+    except Exception:
+        training_df = pd.read_csv(TRAINING_DATA_PATH, low_memory=False)
+        X, y, numeric_features, categorical_features = make_model_frame(training_df)
+        models = make_models(
+            numeric_features=numeric_features,
+            categorical_features=categorical_features,
+            random_state=42,
+        )
+        for model in models.values():
+            model.fit(X, y)
+        return models, "إعادة تدريب داخل بيئة Streamlit"
 
 
 def require_files() -> None:
@@ -285,10 +303,15 @@ def comparison_chart(values: dict[str, float]) -> None:
     st.bar_chart(chart_data, height=260)
 
 
-def render_sidebar(training_df: pd.DataFrame, comparison_df: pd.DataFrame) -> None:
+def render_sidebar(
+    training_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    model_source: str,
+) -> None:
     st.sidebar.header("حالة المشروع")
     st.sidebar.metric("بيانات التدريب", f"{len(training_df):,} سجل")
     st.sidebar.metric("عدد النماذج", "2")
+    st.sidebar.metric("مصدر النماذج", model_source)
     st.sidebar.caption(
         "MAE يعني متوسط الخطأ بالدقائق. RMSE يعاقب الأخطاء الكبيرة أكثر. "
         "كلما كانت القيم أقل كان النموذج أفضل."
@@ -501,9 +524,9 @@ def main() -> None:
     training_df = load_training_data()
     case_df = load_case_predictions()
     comparison_df = load_model_comparison()
-    models = load_models()
+    models, model_source = load_models()
 
-    render_sidebar(training_df, comparison_df)
+    render_sidebar(training_df, comparison_df, model_source)
 
     st.title("توقع زمن استجابة الإسعاف")
     st.caption(
