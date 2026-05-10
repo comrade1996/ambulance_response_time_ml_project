@@ -1,73 +1,112 @@
 # Dataset Description
 
-## Source Files
+## Source
 
-- Raw data: `data/raw/EMS_Incident_Dispatch_Data.csv`
-- Description workbook: `data/raw/EMS_incident_dispatch_data_description.xlsx`
+The project uses NYC EMS Incident Dispatch Data.
 
-## Dataset
+Local source files:
 
-The dataset is the NYC EMS Incident Dispatch Data. It contains emergency medical
-incident records created by the dispatch system. Each row represents an incident
-and includes timestamps, call type, severity, dispatch response indicators,
-borough, dispatch area, ZIP code, and final incident outcome.
+```text
+data/raw/EMS_Incident_Dispatch_Data.csv
+data/raw/EMS_incident_dispatch_data_description.xlsx
+```
+
+The raw CSV is about 6.2 GB and is ignored by git. The deployable project uses
+the saved 100,000-row working dataset:
+
+```text
+data/processed/ems_training_dataset_100000.csv
+```
+
+## What One Row Means
+
+Each row represents one EMS incident. It includes the incident id, timestamps,
+call type, severity level, response indicators, borough, dispatch area, ZIP
+code, and incident outcome fields.
 
 ## Important Fields
 
 | Field | Description |
 |---|---|
 | `CAD_INCIDENT_ID` | Incident identifier. |
-| `INCIDENT_DATETIME` | Date and time the incident was created in the dispatch system. |
-| `INITIAL_CALL_TYPE` | Call type assigned when the incident was created. |
-| `INITIAL_SEVERITY_LEVEL_CODE` | Initial priority or severity level. |
-| `FINAL_CALL_TYPE` | Call type when the incident closes. |
-| `FINAL_SEVERITY_LEVEL_CODE` | Final priority or severity level. |
-| `FIRST_ASSIGNMENT_DATETIME` | Date and time the first unit was assigned. |
-| `DISPATCH_RESPONSE_SECONDS_QY` | Seconds between incident creation and first assignment. |
-| `FIRST_ACTIVATION_DATETIME` | Date and time the first unit went enroute. |
-| `FIRST_ON_SCENE_DATETIME` | Date and time the first unit arrived on scene. |
-| `INCIDENT_RESPONSE_SECONDS_QY` | Seconds between incident creation and first unit on scene. |
-| `INCIDENT_TRAVEL_TM_SECONDS_QY` | Seconds between first assignment and first on scene. |
-| `INCIDENT_CLOSE_DATETIME` | Date and time the incident closed. |
-| `INCIDENT_DISPOSITION_CODE` | Final incident outcome code. |
+| `INCIDENT_DATETIME` | Time the incident was created. |
+| `INITIAL_CALL_TYPE` | Call type at incident creation. |
+| `INITIAL_SEVERITY_LEVEL_CODE` | Initial severity level. |
+| `FINAL_CALL_TYPE` | Final call type. |
+| `FINAL_SEVERITY_LEVEL_CODE` | Final severity level. |
+| `FIRST_ASSIGNMENT_DATETIME` | Time first unit was assigned. |
+| `DISPATCH_RESPONSE_SECONDS_QY` | Seconds from incident creation to first assignment. |
+| `FIRST_ACTIVATION_DATETIME` | Time first unit went enroute. |
+| `FIRST_ON_SCENE_DATETIME` | Time first unit arrived on scene. |
+| `INCIDENT_RESPONSE_SECONDS_QY` | Seconds from incident creation to first unit on scene. |
+| `INCIDENT_TRAVEL_TM_SECONDS_QY` | Seconds from first assignment to first on scene. |
+| `INCIDENT_CLOSE_DATETIME` | Time incident closed. |
+| `INCIDENT_DISPOSITION_CODE` | Final outcome code. |
 | `BOROUGH` | Borough where the incident occurred. |
 | `INCIDENT_DISPATCH_AREA` | EMS dispatch area. |
 | `ZIPCODE` | Incident ZIP code. |
 
 ## Project Mapping
 
-The original project plan expected `INCIDENT_CLASSIFICATION`. In the real
-dataset, this is represented by call type fields, so the implementation maps:
+The model feature `INCIDENT_CLASSIFICATION` is created from the real call-type
+fields:
 
 ```text
 INCIDENT_CLASSIFICATION = FINAL_CALL_TYPE
 ```
 
-If `FINAL_CALL_TYPE` is unavailable, `INITIAL_CALL_TYPE` can be used.
+If `FINAL_CALL_TYPE` is missing, `INITIAL_CALL_TYPE` can be used.
 
-The target variable is:
+## Target Variable
+
+The model predicts:
+
+```text
+Response_Time_Minutes
+```
+
+This means the time between incident creation and first unit arrival on scene.
+
+When available:
 
 ```text
 Response_Time_Minutes = INCIDENT_RESPONSE_SECONDS_QY / 60
 ```
 
-When the seconds field is unavailable, the pipeline calculates response time
-from:
+Otherwise:
 
 ```text
-FIRST_ON_SCENE_DATETIME - INCIDENT_DATETIME
+Response_Time_Minutes = FIRST_ON_SCENE_DATETIME - INCIDENT_DATETIME
 ```
 
-## Real Training Run
+## Current Training Dataset
 
-Because the raw CSV is about 6.2 GB, the current implementation uses chunked
-loading. The latest run used 100,000 cleaned real rows from the official CSV.
+The current training/deployment dataset is:
 
-Latest model comparison:
+```text
+data/processed/ems_training_dataset_100000.csv
+```
+
+It contains 100,000 cleaned real EMS rows plus one header line in the CSV.
+
+The case-level prediction file contains 20,000 test rows:
+
+```text
+outputs/reports/case_level_model_predictions.csv
+```
+
+This file is useful for checking a `Case_Number` manually in a spreadsheet and
+comparing:
+
+- actual response time
+- Linear Regression prediction
+- Random Forest prediction
+
+## Latest Metrics
 
 | Algorithm | MAE | RMSE |
 |---|---:|---:|
 | Random Forest Regressor | 4.96 | 8.71 |
 | Linear Regression | 5.18 | 9.08 |
 
-The best model in the latest run is Random Forest Regressor.
+MAE and RMSE are measured in minutes. Lower values are better.

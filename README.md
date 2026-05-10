@@ -1,38 +1,50 @@
 # Ambulance Response Time ML Project
 
 This project predicts ambulance response time in minutes using real EMS incident
-dispatch data and two supervised regression models:
+dispatch data. It trains and uses two regression models every time:
 
 - Linear Regression
 - Random Forest Regressor
 
-The pipeline loads EMS incident dispatch data, cleans timestamp fields, creates
-`Response_Time_Minutes`, performs exploratory analysis, trains both models,
-saves both model files, compares MAE/RMSE, exports feature importance, and
-writes a final report.
+The project includes a command-line training pipeline, saved model artifacts,
+case-level prediction CSV files, charts, an Arabic Streamlit web app, and a
+PowerPoint presentation.
 
-## Project Structure
+## Current Status
+
+Latest training run:
+
+| Item | Value |
+|---|---:|
+| Clean training rows | 100,000 |
+| Test rows in case-level prediction file | 20,000 |
+| Linear Regression MAE | 5.1820 |
+| Linear Regression RMSE | 9.0771 |
+| Random Forest MAE | 4.9649 |
+| Random Forest RMSE | 8.7104 |
+
+Lower MAE and RMSE are better. The app always shows both model predictions.
+
+## Important Files
 
 ```text
-.
-├── ambulance_response_time_ml_project_plan.md
-├── data/
-│   ├── raw/
-│   └── processed/
-├── docs/
-│   ├── TECHNICAL_DOCUMENTATION.md
-├── outputs/
-│   ├── figures/
-│   ├── models/
-│   └── reports/
-├── scripts/
-│   └── generate_sample_data.py
-├── src/
-│   └── ambulance_response_time_ml/
-├── main.py
-├── pyproject.toml
-└── requirements.txt
+streamlit_app.py
+data/processed/ems_training_dataset_100000.csv
+outputs/models/linear_regression.joblib
+outputs/models/random_forest_regressor.joblib
+outputs/reports/case_level_model_predictions.csv
+outputs/reports/model_comparison.csv
+ambulance response time - omir gibreel.pptx
 ```
+
+The full raw EMS CSV is about 6.2 GB and is ignored by git:
+
+```text
+data/raw/*.csv
+```
+
+For GitHub and Streamlit deployment, use the saved 100,000-row dataset instead
+of uploading the full raw CSV.
 
 ## Install
 
@@ -44,15 +56,8 @@ python -m pip install -r requirements.txt
 
 ## Train Both Models
 
-Use the project virtual environment:
-
 ```bash
 source .venv/bin/activate
-```
-
-Train Linear Regression and Random Forest with the real NYC EMS CSV:
-
-```bash
 python main.py train \
   --data data/raw/EMS_Incident_Dispatch_Data.csv \
   --sample-rows 100000 \
@@ -60,72 +65,54 @@ python main.py train \
   --check-cases 20
 ```
 
-The raw file is large, so `--sample-rows` and `--chunksize` allow the project to
-read the CSV in smaller parts. This command first saves the 100,000-row cleaned
-working dataset, then trains both models.
+This command reads the large raw CSV in chunks, saves
+`data/processed/ems_training_dataset_100000.csv`, trains both models, and writes
+the reports and prediction files.
 
-After training, check:
-
-- `data/processed/ems_training_dataset_100000.csv`
-- `outputs/reports/final_report.md`
-- `outputs/reports/model_comparison.csv`
-- `outputs/reports/feature_importance.csv`
-- `outputs/reports/case_level_model_predictions.csv`
-- `outputs/reports/sample_cases_for_manual_check.csv`
-- `outputs/reports/model_predictions.csv`
-- `outputs/figures/`
-- `outputs/models/linear_regression.joblib`
-- `outputs/models/random_forest_regressor.joblib`
-
-## Open the Saved CSV Outputs
-
-Open the 100,000-row cleaned dataset:
+## Run the Arabic Web App
 
 ```bash
-open data/processed/ems_training_dataset_100000.csv
+source .venv/bin/activate
+streamlit run streamlit_app.py
 ```
 
-Open the small manual-check file:
+Open:
+
+```text
+http://localhost:8501
+```
+
+The first screen is the Arabic new-prediction page. The user chooses values from
+dropdowns, and the two model predictions appear automatically.
+
+## Check One Saved Case
+
+Take a `Case_Number` from:
+
+```text
+outputs/reports/sample_cases_for_manual_check.csv
+```
+
+Then run:
 
 ```bash
-open outputs/reports/sample_cases_for_manual_check.csv
+python main.py predict-case --case-id 230192243
 ```
 
-Open the full case-level prediction file:
+Example:
 
-```bash
-open outputs/reports/case_level_model_predictions.csv
+```text
+Case Number: 230192243
+Actual Response Time: 31.68 minutes
+Linear Regression Prediction: 12.68 minutes
+Linear Regression Error: -19.01 minutes
+Random Forest Prediction: 13.26 minutes
+Random Forest Error: -18.43 minutes
 ```
 
-The important columns in `case_level_model_predictions.csv` are:
+## Predict with Each Model from CLI
 
-| Column | Meaning |
-|---|---|
-| `Case_Number` | The CAD incident id used to identify the case. |
-| `Actual_Response_Time_Minutes` | The real response time from the dataset. |
-| `Linear_Regression_Predicted_Minutes` | Linear Regression prediction. |
-| `Linear_Regression_Error_Minutes` | Linear prediction minus actual response time. |
-| `Random_Forest_Predicted_Minutes` | Random Forest prediction. |
-| `Random_Forest_Error_Minutes` | Random Forest prediction minus actual response time. |
-
-## Dataset Fields
-
-The expected key columns are:
-
-- `INCIDENT_DATETIME`
-- `FIRST_ON_SCENE_DATETIME`
-- `BOROUGH`
-- `INCIDENT_CLASSIFICATION`, or `FINAL_CALL_TYPE`, or `INITIAL_CALL_TYPE`
-
-Optional columns used when available:
-
-- `INCIDENT_DISPATCH_AREA`
-- `INITIAL_SEVERITY_LEVEL_CODE`
-- `FINAL_SEVERITY_LEVEL_CODE`
-
-## Run Both Models on One Case
-
-After training, run Linear Regression:
+Linear Regression:
 
 ```bash
 python main.py predict \
@@ -140,7 +127,7 @@ python main.py predict \
   --final-severity 4
 ```
 
-Run Random Forest:
+Random Forest:
 
 ```bash
 python main.py predict \
@@ -157,99 +144,27 @@ python main.py predict \
 
 `day-of-week` uses Monday = 0 and Sunday = 6.
 
-Example latest outputs for the same case:
+## Manual Free Streamlit Deployment
+
+1. Create a GitHub repository.
+2. Push this project to GitHub.
+3. Go to `https://share.streamlit.io`.
+4. Click `Create app`.
+5. Choose the repository.
+6. Use branch `main`.
+7. Use main file path `streamlit_app.py`.
+8. Deploy.
+
+After deployment, Streamlit will give a URL like:
 
 ```text
-Linear Regression: 11.26 minutes
-Random Forest: 10.13 minutes
+https://your-app-name.streamlit.app
 ```
 
-## Check a Real Saved Case by Case Number
-
-Take a `Case_Number` from:
+Put the final URL in the last slide of:
 
 ```text
-outputs/reports/sample_cases_for_manual_check.csv
-```
-
-Then run:
-
-```bash
-python main.py predict-case --case-id 230192243
-```
-
-Example output:
-
-```text
-Case Number: 230192243
-Actual Response Time: 31.68 minutes
-Linear Regression Prediction: 12.68 minutes
-Linear Regression Error: -19.01 minutes
-Random Forest Prediction: 13.26 minutes
-Random Forest Error: -18.43 minutes
-```
-
-This lets you open the CSV, find the same case number, and compare the real
-response time with both model predictions.
-
-## Compare Both Models
-
-View the comparison table:
-
-```bash
-cat outputs/reports/model_comparison.csv
-```
-
-Latest real-data sample result:
-
-| Algorithm | MAE | RMSE |
-|---|---:|---:|
-| Random Forest Regressor | 4.9649 | 8.7104 |
-| Linear Regression | 5.1820 | 9.0771 |
-
-Lower MAE and RMSE are better.
-
-## Git Ignore and Dataset Size
-
-The full raw EMS CSV is ignored because it is several gigabytes:
-
-```text
-data/raw/*.csv
-```
-
-For the repository and web app proof of concept, use the trained 100,000-row
-dataset instead:
-
-```text
-data/processed/ems_training_dataset_100000.csv
-```
-
-## Run the Web App POC
-
-The project includes a Streamlit web app with dropdown-based inputs. It can:
-
-- Check a saved real case and compare actual response time with both models.
-- Predict a new incident using dropdowns for borough, incident type, dispatch
-  area, time profile, day, month, and severity.
-- Show the model comparison table with MAE and RMSE.
-
-Run it locally:
-
-```bash
-source .venv/bin/activate
-streamlit run streamlit_app.py
-```
-
-Then open:
-
-```text
-http://localhost:8501
-```
-
-Hosting steps are documented in:
-
-```text
-docs/WEBAPP_HOSTING_GUIDE.md
+ambulance response time - omir gibreel.pptx
 ```
 
 ## Documentation

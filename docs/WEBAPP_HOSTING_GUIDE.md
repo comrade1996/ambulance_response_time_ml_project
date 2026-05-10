@@ -1,20 +1,33 @@
-# Ambulance Response Time Web App Hosting Guide
+# Web App Hosting Guide
 
-This guide explains how to run and host the Streamlit proof-of-concept web app.
-The app uses dropdowns, compares both trained models, and lets the user check
-saved real cases against actual response time.
+This guide explains how to run and manually deploy the Arabic Streamlit proof of
+concept for the ambulance response time project.
 
-## Files Used by the Web App
+## App Summary
 
-The web app entry point is:
+Entry point:
 
 ```text
 streamlit_app.py
 ```
 
-The app expects these project artifacts:
+Main behavior:
+
+- Arabic right-to-left UI.
+- New prediction is the first tab.
+- Inputs use dropdowns.
+- Dispatch area is filtered by borough.
+- Linear Regression and Random Forest predictions appear automatically.
+- Saved-case tab compares real response time with both model predictions.
+
+## Required Files for Deployment
+
+The Streamlit app needs these files in the GitHub repository:
 
 ```text
+streamlit_app.py
+requirements.txt
+.streamlit/config.toml
 data/processed/ems_training_dataset_100000.csv
 outputs/models/linear_regression.joblib
 outputs/models/random_forest_regressor.joblib
@@ -22,39 +35,18 @@ outputs/reports/case_level_model_predictions.csv
 outputs/reports/model_comparison.csv
 ```
 
-The full raw EMS CSV is too large for a simple demo repository, so it is ignored
-by git. Deploy the saved 100,000-row training dataset and the trained model
-artifacts instead.
+Do not upload the full raw EMS CSV. It is ignored by git:
 
-## Train Before Running
-
-From the project folder:
-
-```bash
-source .venv/bin/activate
-python main.py train \
-  --data data/raw/EMS_Incident_Dispatch_Data.csv \
-  --sample-rows 100000 \
-  --chunksize 50000 \
-  --check-cases 20
+```text
+data/raw/*.csv
 ```
 
-This creates the 100,000-row dataset, model files, reports, and prediction CSVs
-needed by the web app.
-
 ## Run Locally
-
-Install dependencies:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-```
-
-Start the app:
-
-```bash
 streamlit run streamlit_app.py
 ```
 
@@ -64,44 +56,95 @@ Open:
 http://localhost:8501
 ```
 
-## Deploy on Streamlit Community Cloud
+## Manual Free Deployment on Streamlit Community Cloud
 
-1. Push the project to GitHub.
-2. Make sure the repository includes:
-   - `streamlit_app.py`
-   - `requirements.txt`
-   - `.streamlit/config.toml`
-   - `data/processed/ems_training_dataset_100000.csv`
-   - `outputs/models/linear_regression.joblib`
-   - `outputs/models/random_forest_regressor.joblib`
-   - `outputs/reports/case_level_model_predictions.csv`
-   - `outputs/reports/model_comparison.csv`
-3. Create a new Streamlit Cloud app from the GitHub repository.
-4. Set the app file to `streamlit_app.py`.
-5. Deploy.
+1. Create a GitHub repository.
+2. Push the project files to GitHub.
+3. Go to:
 
-## Deploy on Render
-
-Build command:
-
-```bash
-pip install -r requirements.txt
+```text
+https://share.streamlit.io
 ```
 
-Start command:
+4. Click `Create app`.
+5. Choose `Yup, I have an app`.
+6. Select your GitHub repository.
+7. Select branch:
 
-```bash
-streamlit run streamlit_app.py --server.port $PORT --server.address 0.0.0.0
+```text
+main
 ```
 
-## Demo Flow
+8. Set the main file path:
 
-1. Open the web app.
-2. Show the model performance table in the sidebar.
-3. Open `Saved case check`.
-4. Select a case number and compare actual response time with both predictions.
-5. Open `New prediction`.
-6. Choose values from dropdowns.
-7. Click `Run both models`.
+```text
+streamlit_app.py
+```
 
-The app always uses both models. It does not use a hidden selected model.
+9. Optional: choose a custom app URL.
+10. Click `Deploy`.
+
+After deployment, Streamlit gives a public URL like:
+
+```text
+https://your-app-name.streamlit.app
+```
+
+## Git Commands
+
+If the repository does not have a remote yet:
+
+```bash
+git remote add origin https://github.com/<your-user>/<your-repo>.git
+git push -u origin main
+```
+
+If the remote already exists:
+
+```bash
+git push
+```
+
+## Update PowerPoint Link
+
+The presentation file is:
+
+```text
+ambulance response time - omir gibreel.pptx
+```
+
+The last slide contains a placeholder:
+
+```text
+https://your-app-name.streamlit.app
+```
+
+After deployment, replace that placeholder with the real Streamlit URL.
+
+## Troubleshooting
+
+If Streamlit says a file is missing, confirm these files were committed and
+pushed:
+
+```text
+data/processed/ems_training_dataset_100000.csv
+outputs/models/linear_regression.joblib
+outputs/models/random_forest_regressor.joblib
+outputs/reports/case_level_model_predictions.csv
+outputs/reports/model_comparison.csv
+```
+
+If dependencies fail, confirm `requirements.txt` includes:
+
+```text
+streamlit
+pandas
+numpy
+scikit-learn
+matplotlib
+joblib
+openpyxl
+```
+
+If the app is slow on first load, wait for Streamlit to download dependencies
+and load the model files.
