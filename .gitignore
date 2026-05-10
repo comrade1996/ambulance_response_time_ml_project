@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+data/raw/*.csv
+data/processed/cleaned_ems_dispatch_data.csv
+data/processed/ems_training_dataset_10000.csv
+outputs/reports/best_model_predictions.csv
