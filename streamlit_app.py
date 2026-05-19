@@ -30,6 +30,8 @@ LIGHTGBM_MODEL_PATH = ROOT / "outputs" / "models" / "lightgbm.joblib"
 STACKING_MODEL_PATH = ROOT / "outputs" / "models" / "stacking_ensemble.joblib"
 TARGET_COL = "Response_Time_Minutes"
 SLOW_RESPONSE_LIMIT = 15.0
+ORIGINAL_DATA_URL = "https://data.cityofnewyork.us/Public-Safety/EMS-Incident-Dispatch-Data/76xm-jjuj"
+ORIGINAL_CSV_URL = "https://data.cityofnewyork.us/api/views/76xm-jjuj/rows.csv?accessType=DOWNLOAD"
 
 FEATURE_COLUMNS = [
     "Hour",
@@ -237,7 +239,7 @@ def load_models() -> tuple[dict[str, object], str]:
     try:
         models = {}
         with warnings.catch_warnings():
-            warnings.simplefilter("error", InconsistentVersionWarning)
+            warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
             models["Linear Regression"] = joblib.load(LINEAR_MODEL_PATH)
             models["Random Forest Regressor"] = joblib.load(RANDOM_FOREST_MODEL_PATH)
             if XGBOOST_MODEL_PATH.exists():
@@ -250,7 +252,7 @@ def load_models() -> tuple[dict[str, object], str]:
     except (Exception, InconsistentVersionWarning):
         training_df = pd.read_csv(TRAINING_DATA_PATH, low_memory=False)
         training_df = training_df.sample(
-            n=min(20000, len(training_df)),
+            n=min(8000, len(training_df)),
             random_state=42,
         )
         X, y, numeric_features, categorical_features = make_enhanced_model_frame(training_df)
@@ -259,14 +261,16 @@ def load_models() -> tuple[dict[str, object], str]:
             categorical_features=categorical_features,
             random_state=42,
         )
-        models = {
-            name: fallback_models[name]
-            for name in ["Linear Regression", "Random Forest Regressor"]
-            if name in fallback_models
-        }
-        for model in models.values():
-            model.fit(X, y)
-        return models, "إعادة تدريب مختصر داخل بيئة Streamlit"
+        models = {}
+        for name, model in fallback_models.items():
+            try:
+                model.fit(X, y)
+                models[name] = model
+            except Exception:
+                continue
+        if not models:
+            raise RuntimeError("No models could be loaded or trained.")
+        return models, "نماذج مدربة داخل التطبيق"
 
 
 @st.cache_data(show_spinner=False)
@@ -413,6 +417,12 @@ def predict_minutes(model: object, payload: dict) -> float:
             category=UserWarning,
             module="sklearn.preprocessing._encoders",
         )
+        warnings.filterwarnings(
+            "ignore",
+            message="X does not have valid feature names.*",
+            category=UserWarning,
+            module="sklearn.utils.validation",
+        )
         return float(model.predict(input_frame)[0])
 
 
@@ -518,7 +528,7 @@ def dispatch_area_summary(training_df: pd.DataFrame, min_cases: int = 80) -> pd.
                 "INCIDENT_DISPATCH_AREA": "منطقة الإرسال",
                 "الحالات": "عدد الحالات",
                 "المتوسط": "متوسط الاستجابة",
-                "P90": "P90",
+                "P90": "زمن 90% من الحالات",
                 "تأخير_الإرسال_دقائق": "متوسط تأخير الإرسال",
                 "نسبة_أعلى_من_15": "نسبة أعلى من 15 دقيقة",
             }
@@ -587,11 +597,10 @@ def render_hero() -> None:
     st.markdown(
         """
         <div class="hero-panel">
-            <h1>لوحة إدارة زمن استجابة الإسعاف</h1>
+            <h1>لوحة زمن استجابة الإسعاف</h1>
             <p>
-            عرض تنفيذي مبسط يوضح مستوى الخدمة الحالي، أماكن التأخير، وأفضل فرص
-            التحسين. صممت هذه الصفحة لتكون مفهومة في اجتماع الإدارة بدون شرح تقني
-            طويل عن الخوارزميات.
+            عرض واضح يشرح مستوى الخدمة الحالي، أين يظهر التأخير، وما الذي يمكن
+            مراقبته لتحسين زمن الوصول. كل رقم تحته معنى عملي بدون مصطلحات معقدة.
             </p>
         </div>
         """,
@@ -612,13 +621,13 @@ def render_sidebar(
     st.sidebar.metric("أفضل نموذج", best_name)
     st.sidebar.caption(
         f"متوسط خطأ أفضل نموذج: {format_minutes(best_mae)}. "
-        "الأرقام هنا للعرض الإداري ودعم القرار، وليست بديلا عن بروتوكولات التشغيل."
+        "الأرقام هنا للمساعدة في فهم الأداء، وليست بديلا عن بروتوكولات التشغيل."
     )
     st.sidebar.divider()
     st.sidebar.caption("مصدر النماذج")
     st.sidebar.write(model_source)
     st.sidebar.caption(
-        "ابدأ من الملخص التنفيذي، ثم انتقل إلى فرص التحسين لمعرفة أين تركز الموارد."
+        "ابدأ من ملخص الأداء، ثم انتقل إلى فرص التحسين لمعرفة أين تركز الموارد."
     )
 
 
@@ -717,8 +726,8 @@ def render_case_checker(case_df: pd.DataFrame) -> None:
 def render_new_prediction(training_df: pd.DataFrame, models: dict[str, object]) -> None:
     st.subheader("توقع حالة جديدة")
     st.caption(
-        f"اختر وصف الحالة من القوائم. التطبيق يشغل {len(models)} نماذج تلقائيا ويعرض "
-        "زمن الاستجابة المتوقع بالدقائق."
+        f"اختر وصف الحالة من القوائم. سيتم تشغيل كل النماذج المتاحة وعددها {len(models)} "
+        "ثم عرض زمن الاستجابة المتوقع بالدقائق."
     )
     st.info(
         "طريقة القراءة: إذا ظهرت النتيجة 10 دقائق فهذا يعني أن النموذج يتوقع "
@@ -837,6 +846,18 @@ def render_new_prediction(training_df: pd.DataFrame, models: dict[str, object]) 
     predictions = {}
     for model_name, model in models.items():
         predictions[model_name] = predict_minutes(model, payload)
+
+    st.markdown("##### جميع نتائج النماذج المتاحة")
+    prediction_table = pd.DataFrame(
+        [
+            {
+                "النموذج": arabic_model_name(model_name),
+                "التوقع بالدقائق": round(value, 2),
+            }
+            for model_name, value in predictions.items()
+        ]
+    ).sort_values("التوقع بالدقائق")
+    st.dataframe(prediction_table, hide_index=True, use_container_width=True)
 
     pred_items = list(predictions.items())
     row1 = pred_items[:3]
@@ -1320,12 +1341,12 @@ def render_executive_overview(
     quality = model_quality_table(case_df)
     best_quality = quality.iloc[0] if not quality.empty else None
 
-    st.subheader("الملخص التنفيذي")
+    st.subheader("ملخص الأداء")
     st.markdown(
         """
         <div class="section-note">
-        هذه الصفحة تجيب عن ثلاثة أسئلة للإدارة: ما مستوى الخدمة الحالي؟ أين تظهر
-        أكبر فرص التحسين؟ وهل يمكن استخدام النموذج لدعم التخطيط اليومي؟
+        اقرأ هذه الصفحة بهذا الترتيب: كم يستغرق الوصول عادة، أين تظهر الحالات
+        الأبطأ، ثم هل التوقعات قريبة من الواقع بما يكفي للمقارنة بين السيناريوهات.
         </div>
         """,
         unsafe_allow_html=True,
@@ -1335,16 +1356,16 @@ def render_executive_overview(
     kpi_cols[0].metric("الحالات المستخدمة", f"{int(summary['count']):,}")
     kpi_cols[1].metric("متوسط الاستجابة", format_minutes(summary["mean"]))
     kpi_cols[2].metric("الوسيط", format_minutes(summary["median"]))
-    kpi_cols[3].metric("P90", format_minutes(summary["p90"]))
+    kpi_cols[3].metric("زمن 90% من الحالات", format_minutes(summary["p90"]))
     kpi_cols[4].metric("أكثر من 15 دقيقة", format_percent(summary["slow_share"]))
 
     st.markdown(
         f"""
         <p class="plain-explain">
-        الوسيط يعني أن نصف الحالات كانت أسرع منه. P90 يعني أن 90% من الحالات
-        وصلت قبل هذه القيمة، لذلك هو مؤشر مهم للإدارة لأنه يكشف الحالات البطيئة
-        وليس المتوسط فقط. أفضل نموذج حاليا هو <b>{best_name}</b> بمتوسط خطأ
-        تقريبي <b>{format_minutes(best_mae)}</b>.
+        الوسيط يعني أن نصف الحالات وصلت أسرع من هذا الرقم. زمن 90% من الحالات
+        يعني أن 90 من كل 100 حالة وصلت خلال هذا الوقت أو أقل، بينما أبطأ 10 حالات
+        أخذت وقتا أطول. أفضل نموذج حاليا هو <b>{best_name}</b> بمتوسط خطأ تقريبي
+        <b>{format_minutes(best_mae)}</b>.
         </p>
         """,
         unsafe_allow_html=True,
@@ -1361,6 +1382,7 @@ def render_executive_overview(
                     "الحالات": "عدد الحالات",
                     "المتوسط": "متوسط الاستجابة",
                     "الوسيط": "الوسيط",
+                    "P90": "زمن 90% من الحالات",
                     "نسبة_أعلى_من_15": "نسبة أعلى من 15 دقيقة %",
                     "فرصة_التحسين": "دقائق قابلة للتحسين",
                 }
@@ -1380,16 +1402,16 @@ def render_executive_overview(
         peak_hour = int(hourly.idxmax())
         st.info(
             f"أعلى متوسط استجابة يظهر حول الساعة {peak_hour}:00. "
-            "هذا يساعد الإدارة على مراجعة التوزيع المناوبي ونقاط التمركز."
+            "هذا يساعد على مراجعة التوزيع المناوبي ونقاط التمركز."
         )
 
-    st.markdown("##### رسالة للإدارة")
+    st.markdown("##### الخلاصة")
     if best_quality is not None:
         st.markdown(
             f"""
             <div class="recommendation-box">
-            النموذج مناسب كأداة دعم قرار للتخطيط والمقارنة بين السيناريوهات، وليس
-            كقرار تشغيلي منفرد. أفضل نتيجة تحقق متوسط خطأ
+            النموذج مناسب للمقارنة بين السيناريوهات وفهم المخاطر، وليس وعدا بزمن
+            وصول دقيق لكل حالة منفردة. أفضل نتيجة تحقق متوسط خطأ
             <b>{format_minutes(float(best_quality["متوسط الخطأ"]))}</b>، و
             <b>{format_percent(float(best_quality["ضمن 10 دقائق"]))}</b>
             من حالات الاختبار كانت ضمن 10 دقائق من الزمن الحقيقي.
@@ -1400,12 +1422,12 @@ def render_executive_overview(
 
 
 def render_improvement_opportunities(training_df: pd.DataFrame) -> None:
-    st.subheader("فرص التحسين وأولويات الإدارة")
+    st.subheader("أين يمكن تحسين الاستجابة؟")
     st.markdown(
         """
         <div class="section-note">
-        الهدف هنا ليس عرض كل البيانات، بل تحديد أين يجب أن يبدأ النقاش الإداري:
-        المناطق، مناطق الإرسال، أنواع البلاغات، والأوقات التي ترتبط باستجابة أبطأ.
+        هذا القسم يرتب الأماكن والأوقات وأنواع البلاغات حسب زمن الاستجابة. الهدف
+        هو معرفة أين تظهر المشكلة أولا، ثم فتح التفاصيل عند الحاجة.
         </div>
         """,
         unsafe_allow_html=True,
@@ -1438,7 +1460,11 @@ def render_improvement_opportunities(training_df: pd.DataFrame) -> None:
     with tab_incident:
         incident_df = incident_summary(training_df).head(12)
         display_df = percent_display(incident_df, ["نسبة أعلى من 15 دقيقة"])
-        st.dataframe(display_df, hide_index=True, use_container_width=True)
+        st.dataframe(
+            display_df.rename(columns={"P90": "زمن 90% من الحالات"}),
+            hide_index=True,
+            use_container_width=True,
+        )
         st.caption(
             "الجدول يعرض أنواع البلاغات ذات متوسط استجابة أعلى، بشرط وجود عدد كاف من الحالات."
         )
@@ -1469,26 +1495,25 @@ def render_improvement_opportunities(training_df: pd.DataFrame) -> None:
         st.markdown(
             """
             <p class="plain-explain">
-            استخدام هذا القسم في اجتماع الإدارة: اختر أعلى ساعتين أو ثلاث ساعات،
-            ثم قارنهما مع جدول المناوبات ونقاط تمركز الوحدات. إذا تكرر التأخير
-            في نفس الفترة، فهذا يعطي مبررا لإعادة توزيع الموارد مؤقتا.
+            طريقة القراءة: اختر أعلى ساعتين أو ثلاث ساعات، ثم قارنها مع جدول
+            المناوبات ونقاط تمركز الوحدات. إذا تكرر التأخير في نفس الفترة، فهذا
+            يعني أن الوقت نفسه قد يكون جزءا من المشكلة.
             </p>
             """,
             unsafe_allow_html=True,
         )
 
 
-def render_management_prediction(
+def render_prediction_experience(
     training_df: pd.DataFrame,
     models: dict[str, object],
 ) -> None:
-    st.subheader("محاكاة قرار تشغيلي")
+    st.subheader("توقع حالة جديدة")
     st.markdown(
         """
         <div class="section-note">
-        استخدم هذا القسم كسيناريو في العرض: اختر منطقة، نوع بلاغ، وقت، ومستوى
-        خطورة. التطبيق يعطي زمنا متوقعا يساعد الإدارة على مقارنة السيناريوهات
-        قبل تغيير التمركز أو الموارد.
+        اختر وصف الحالة، ثم شاهد توقع كل نموذج متاح. المقارنة بين النماذج تساعد
+        على معرفة هل التوقع ثابت تقريبا أم أن النماذج تختلف كثيرا.
         </div>
         """,
         unsafe_allow_html=True,
@@ -1500,7 +1525,7 @@ def render_model_confidence(
     case_df: pd.DataFrame,
     comparison_df: pd.DataFrame,
 ) -> None:
-    st.subheader("ثقة النموذج بلغة إدارية")
+    st.subheader("هل التوقعات قريبة من الواقع؟")
     st.markdown(
         """
         <div class="section-note">
@@ -1535,7 +1560,7 @@ def render_model_confidence(
         أفضل نموذج في بيانات الاختبار هو <b>{best["النموذج"]}</b>. متوسط الخطأ
         لديه <b>{format_minutes(float(best["متوسط الخطأ"]))}</b>. معنى ذلك:
         إذا توقع النموذج 10 دقائق، فالنتيجة الفعلية قد تختلف بعدة دقائق، لذلك
-        يستخدم للتخطيط وتحديد المخاطر وليس لتحديد قرار إسعافي لحالة فردية.
+        يستخدم لفهم النمط العام وتحديد المخاطر، وليس لتحديد زمن وصول مضمون لحالة فردية.
         </div>
         """,
         unsafe_allow_html=True,
@@ -1577,6 +1602,15 @@ def render_data_context(training_df: pd.DataFrame) -> None:
         )
 
     st.markdown("##### ما هي البيانات؟")
+    st.markdown(
+        f"""
+        مصدر البيانات الأصلي:
+        <a href="{ORIGINAL_DATA_URL}" target="_blank">NYC Open Data - EMS Incident Dispatch Data</a>
+        &nbsp;|&nbsp;
+        <a href="{ORIGINAL_CSV_URL}" target="_blank">تحميل CSV الأصلي</a>
+        """,
+        unsafe_allow_html=True,
+    )
     st.write(
         "استخدمنا سجلات حوادث EMS بعد تنظيفها وتجهيزها للنموذج. كل سجل يمثل بلاغا "
         "ويتضمن وقت البلاغ، وقت الوصول الأول للموقع، المنطقة، منطقة الإرسال، نوع "
@@ -1590,7 +1624,7 @@ def render_data_context(training_df: pd.DataFrame) -> None:
         st.markdown(
             """
             - حجم بيانات مناسب للعرض والتحليل، وليس مجرد عينة صغيرة.
-            - يحتوي على وقت ومكان ونوع بلاغ وخطورة، وهي عوامل عملية تفهمها الإدارة.
+            - يحتوي على وقت ومكان ونوع بلاغ وخطورة، وهي عوامل عملية سهلة الفهم.
             - يحتوي على الزمن الحقيقي للاستجابة، لذلك يمكن قياس النموذج مقابل الواقع.
             - يسمح بتحديد مناطق وساعات وأنواع بلاغات تحتاج مراجعة تشغيلية.
             """
@@ -1632,9 +1666,9 @@ def render_technical_details(
     comparison_df: pd.DataFrame,
     models: dict[str, object],
 ) -> None:
-    st.subheader("Technical Details / التفاصيل التقنية")
+    st.subheader("التحليل التقني")
     st.caption(
-        "هذا التبويب يجمع التحليلات التقنية المتقدمة في مكان واحد حتى تبقى الصفحة الرئيسية مناسبة للإدارة."
+        "هذا التبويب يجمع التحليلات التقنية المتقدمة في مكان واحد حتى تبقى الصفحة الرئيسية بسيطة وواضحة."
     )
     tech_tabs = st.tabs(
         [
@@ -1683,12 +1717,12 @@ def main() -> None:
 
     tab_exec, tab_ops, tab_predict, tab_confidence, tab_data, tab_technical = st.tabs(
         [
-            "الملخص التنفيذي",
+            "ملخص الأداء",
             "فرص التحسين",
-            "محاكاة القرار",
-            "ثقة النموذج",
+            "توقع حالة جديدة",
+            "دقة التوقع",
             "البيانات والحدود",
-            "التفاصيل التقنية",
+            "التحليل التقني",
         ]
     )
     with tab_exec:
@@ -1696,7 +1730,7 @@ def main() -> None:
     with tab_ops:
         render_improvement_opportunities(training_df)
     with tab_predict:
-        render_management_prediction(training_df, models)
+        render_prediction_experience(training_df, models)
     with tab_confidence:
         render_model_confidence(case_df, comparison_df)
     with tab_data:
