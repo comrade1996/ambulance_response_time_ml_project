@@ -26,10 +26,9 @@ The Streamlit app needs these files in the GitHub repository:
 
 ```text
 streamlit_app.py
-runtime.txt
 requirements.txt
 .streamlit/config.toml
-data/processed/ems_training_dataset_100000.csv
+data/processed/ems_training_dataset_deploy.csv
 outputs/models/linear_regression.joblib
 outputs/models/random_forest_regressor.joblib
 outputs/reports/case_level_model_predictions.csv
@@ -135,27 +134,26 @@ outputs/reports/case_level_model_predictions.csv
 outputs/reports/model_comparison.csv
 ```
 
-If dependencies fail, confirm Streamlit Community Cloud is set to Python 3.11
-in the app's Advanced settings and that `requirements.txt` includes pinned
-versions:
+If dependencies fail, confirm `requirements.txt` includes Python-3.14-compatible
+version ranges:
 
 ```text
-pandas==2.3.3
-numpy==2.0.2
-scikit-learn==1.6.1
-matplotlib==3.9.4
-joblib==1.5.3
-openpyxl==3.1.5
-streamlit==1.50.0
-xgboost==2.1.4
-lightgbm==4.6.0
-shap==0.49.1
-plotly==6.7.0
+pandas>=2.3
+numpy>=2.0
+scikit-learn>=1.6
+matplotlib>=3.9
+joblib>=1.5
+openpyxl>=3.1
+streamlit>=1.50
+xgboost>=2.1
+lightgbm>=4.6
+shap>=0.49
+plotly>=6.0
 ```
 
 The saved `.joblib` files were trained with `scikit-learn==1.6.1`. If
-Streamlit Cloud uses a newer `scikit-learn` version and cannot open the saved
-models, the app automatically retrains models from
+Streamlit Cloud uses a newer `scikit-learn` version, the app skips those saved
+models and automatically retrains deploy-safe models from
 `data/processed/ems_training_dataset_deploy.csv` during startup.
 
 If the app is slow on first load, wait for Streamlit to download dependencies

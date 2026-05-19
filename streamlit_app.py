@@ -7,6 +7,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
+from sklearn.exceptions import InconsistentVersionWarning
 
 from src.ambulance_response_time_ml.data import (
     make_model_frame,
@@ -181,25 +182,31 @@ def load_model_comparison() -> pd.DataFrame:
 @st.cache_resource(show_spinner=False)
 def load_models() -> tuple[dict[str, object], str]:
     try:
-        models = {
-            "Linear Regression": joblib.load(LINEAR_MODEL_PATH),
-            "Random Forest Regressor": joblib.load(RANDOM_FOREST_MODEL_PATH),
-        }
-        if XGBOOST_MODEL_PATH.exists():
-            models["XGBoost"] = joblib.load(XGBOOST_MODEL_PATH)
-        if LIGHTGBM_MODEL_PATH.exists():
-            models["LightGBM"] = joblib.load(LIGHTGBM_MODEL_PATH)
-        if STACKING_MODEL_PATH.exists():
-            models["Stacking Ensemble"] = joblib.load(STACKING_MODEL_PATH)
+        models = {}
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", InconsistentVersionWarning)
+            models["Linear Regression"] = joblib.load(LINEAR_MODEL_PATH)
+            models["Random Forest Regressor"] = joblib.load(RANDOM_FOREST_MODEL_PATH)
+            if XGBOOST_MODEL_PATH.exists():
+                models["XGBoost"] = joblib.load(XGBOOST_MODEL_PATH)
+            if LIGHTGBM_MODEL_PATH.exists():
+                models["LightGBM"] = joblib.load(LIGHTGBM_MODEL_PATH)
+            if STACKING_MODEL_PATH.exists():
+                models["Stacking Ensemble"] = joblib.load(STACKING_MODEL_PATH)
         return models, "ملفات النماذج المحفوظة"
-    except Exception:
+    except (Exception, InconsistentVersionWarning):
         training_df = pd.read_csv(TRAINING_DATA_PATH, low_memory=False)
         X, y, numeric_features, categorical_features = make_enhanced_model_frame(training_df)
-        models = make_models(
+        fallback_models = make_models(
             numeric_features=numeric_features,
             categorical_features=categorical_features,
             random_state=42,
         )
+        models = {
+            name: fallback_models[name]
+            for name in ["Linear Regression", "Random Forest Regressor"]
+            if name in fallback_models
+        }
         for model in models.values():
             model.fit(X, y)
         return models, "إعادة تدريب داخل بيئة Streamlit"

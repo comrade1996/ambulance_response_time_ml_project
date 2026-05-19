@@ -162,9 +162,8 @@ Current behavior:
 The app uses:
 
 ```text
-runtime.txt
 requirements.txt
-data/processed/ems_training_dataset_100000.csv
+data/processed/ems_training_dataset_deploy.csv
 outputs/models/linear_regression.joblib
 outputs/models/random_forest_regressor.joblib
 outputs/reports/case_level_model_predictions.csv

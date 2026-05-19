@@ -29,9 +29,8 @@ Lower MAE and RMSE are better. The app always shows both model predictions.
 
 ```text
 streamlit_app.py
-runtime.txt
 requirements.txt
-data/processed/ems_training_dataset_100000.csv
+data/processed/ems_training_dataset_deploy.csv
 outputs/models/linear_regression.joblib
 outputs/models/random_forest_regressor.joblib
 outputs/reports/case_level_model_predictions.csv
@@ -56,11 +55,10 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-On Streamlit Community Cloud, set the app's Python version to 3.11 in Advanced
-settings. The saved `.joblib` models were trained with `scikit-learn==1.6.1`,
-so `requirements.txt` pins that version to avoid inconsistent model loading.
-If the saved models cannot be opened, the app automatically retrains models
-from the saved 100,000-row dataset and continues running.
+On Streamlit Community Cloud, the saved `.joblib` models are loaded only when
+their `scikit-learn` version matches the cloud runtime. If Cloud runs a newer
+Python or `scikit-learn` version, the app automatically retrains deploy-safe
+models from the saved 100,000-row dataset and continues running.
 
 ## Train Both Models
 
