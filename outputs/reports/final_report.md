@@ -27,10 +27,10 @@ response time and identify the most important operational factors behind delay?
 
 ## 5. Dataset Summary
 
-- Rows after loading: 100000
-- Columns after loading: 36
+- Rows after loading: 500000
+- Columns after loading: 44
 - Duplicate rows: 0
-- Selected features: Hour, DayOfWeek, Month, INITIAL_SEVERITY_LEVEL_CODE, FINAL_SEVERITY_LEVEL_CODE, BOROUGH, INCIDENT_CLASSIFICATION, INCIDENT_DISPATCH_AREA
+- Selected features: Hour, DayOfWeek, Month, INITIAL_SEVERITY_LEVEL_CODE, FINAL_SEVERITY_LEVEL_CODE, DISPATCH_RESPONSE_SECONDS_QY, IsHeld, IsReopen, BOROUGH, INCIDENT_CLASSIFICATION, INCIDENT_DISPATCH_AREA, ZIPCODE
 - Missing target values before final model frame, if present: 0
 
 ## 6. Data Cleaning and Feature Engineering
@@ -57,36 +57,39 @@ to capture nonlinear relationships and provide feature importance.
 
 | Algorithm               | MAE    | RMSE   |
 | ----------------------- | ------ | ------ |
-| Random Forest Regressor | 4.9649 | 8.7104 |
-| Linear Regression       | 5.1820 | 9.0771 |
+| Stacking Ensemble       | 3.5040 | 5.1943 |
+| XGBoost                 | 3.5069 | 5.1994 |
+| LightGBM                | 3.5149 | 5.2082 |
+| Random Forest Regressor | 3.6041 | 5.3157 |
+| Linear Regression       | 3.6878 | 5.4842 |
 
-In this run, **Random Forest Regressor** performed better based on the lowest MAE and
+In this run, **Stacking Ensemble** performed better based on the lowest MAE and
 lowest RMSE ordering.
 
 ## 10. Feature Importance
 
 | Feature                        | Importance |
 | ------------------------------ | ---------- |
-| INITIAL_SEVERITY_LEVEL_CODE    | 0.2597     |
-| Hour                           | 0.2052     |
-| DayOfWeek                      | 0.1353     |
-| INCIDENT_DISPATCH_AREA_M9      | 0.0254     |
-| FINAL_SEVERITY_LEVEL_CODE      | 0.0188     |
-| INCIDENT_DISPATCH_AREA_K4      | 0.0157     |
-| INCIDENT_CLASSIFICATION_ABDPN  | 0.0157     |
-| INCIDENT_DISPATCH_AREA_M7      | 0.0155     |
-| INCIDENT_CLASSIFICATION_INJURY | 0.0145     |
-| INCIDENT_DISPATCH_AREA_M8      | 0.0143     |
-| BOROUGH_MANHATTAN              | 0.0129     |
-| INCIDENT_CLASSIFICATION_EDP    | 0.0123     |
-| INCIDENT_DISPATCH_AREA_B2      | 0.0116     |
-| INCIDENT_CLASSIFICATION_SICK   | 0.0108     |
-| BOROUGH_BROOKLYN               | 0.0106     |
-| INCIDENT_CLASSIFICATION_RESPFC | 0.0102     |
-| INCIDENT_DISPATCH_AREA_M6      | 0.0100     |
-| INCIDENT_CLASSIFICATION_EDPC   | 0.0092     |
-| INCIDENT_CLASSIFICATION_UNKNOW | 0.0087     |
-| INCIDENT_CLASSIFICATION_CARDFC | 0.0078     |
+| DISPATCH_RESPONSE_SECONDS_QY   | 0.6300     |
+| INITIAL_SEVERITY_LEVEL_CODE    | 0.1263     |
+| IsHeld                         | 0.1127     |
+| Hour                           | 0.0280     |
+| DayOfWeek                      | 0.0141     |
+| INCIDENT_DISPATCH_AREA_K4      | 0.0085     |
+| FINAL_SEVERITY_LEVEL_CODE      | 0.0077     |
+| Month                          | 0.0048     |
+| BOROUGH_BROOKLYN               | 0.0031     |
+| ZIPCODE_11208.0                | 0.0026     |
+| ZIPCODE_11370.0                | 0.0022     |
+| INCIDENT_DISPATCH_AREA_Q1      | 0.0022     |
+| INCIDENT_DISPATCH_AREA_M2      | 0.0012     |
+| INCIDENT_DISPATCH_AREA_K2      | 0.0012     |
+| ZIPCODE_10036.0                | 0.0012     |
+| BOROUGH_MANHATTAN              | 0.0012     |
+| IsReopen                       | 0.0012     |
+| INCIDENT_CLASSIFICATION_EDPC   | 0.0011     |
+| INCIDENT_CLASSIFICATION_CDBRFC | 0.0010     |
+| ZIPCODE_11207.0                | 0.0009     |
 
 ## 11. Discussion
 
