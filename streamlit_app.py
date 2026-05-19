@@ -28,6 +28,8 @@ RANDOM_FOREST_MODEL_PATH = ROOT / "outputs" / "models" / "random_forest_regresso
 XGBOOST_MODEL_PATH = ROOT / "outputs" / "models" / "xgboost.joblib"
 LIGHTGBM_MODEL_PATH = ROOT / "outputs" / "models" / "lightgbm.joblib"
 STACKING_MODEL_PATH = ROOT / "outputs" / "models" / "stacking_ensemble.joblib"
+TARGET_COL = "Response_Time_Minutes"
+SLOW_RESPONSE_LIMIT = 15.0
 
 FEATURE_COLUMNS = [
     "Hour",
@@ -81,6 +83,7 @@ BOROUGH_NAMES = {
     "MANHATTAN": "مانهاتن",
     "QUEENS": "كوينز",
     "STATEN ISLAND": "ستاتن آيلاند",
+    "RICHMOND / STATEN ISLAND": "ستاتن آيلاند",
 }
 
 INCIDENT_CLASSIFICATION_NAMES = {
@@ -117,7 +120,7 @@ st.markdown(
         text-align: right;
     }
     .stApp {
-        background: linear-gradient(180deg, #f7faf9 0%, #eef5f2 100%);
+        background: #f6f8f7;
     }
     h1, h2, h3 {
         letter-spacing: 0;
@@ -150,6 +153,56 @@ st.markdown(
         color: #526b66;
         font-size: 0.92rem;
         line-height: 1.45;
+    }
+    .hero-panel {
+        background: linear-gradient(135deg, #0f766e 0%, #155e75 58%, #334155 100%);
+        color: #ffffff;
+        border-radius: 8px;
+        padding: 1.35rem 1.45rem;
+        margin-bottom: 1.1rem;
+        box-shadow: 0 14px 32px rgba(15, 31, 29, 0.14);
+    }
+    .hero-panel h1 {
+        color: #ffffff;
+        margin: 0 0 0.35rem 0;
+        font-size: 2rem;
+    }
+    .hero-panel p {
+        color: #dff7f2;
+        line-height: 1.65;
+        margin: 0;
+        max-width: 860px;
+    }
+    .section-note {
+        background: #ffffff;
+        border-right: 4px solid #0f766e;
+        border-radius: 8px;
+        padding: 0.85rem 1rem;
+        margin: 0.6rem 0 1rem;
+        color: #334155;
+        line-height: 1.65;
+    }
+    .plain-explain {
+        color: #475569;
+        font-size: 0.94rem;
+        line-height: 1.6;
+        margin-top: -0.25rem;
+    }
+    .recommendation-box {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 8px;
+        padding: 1rem 1.1rem;
+        color: #7c2d12;
+        line-height: 1.65;
+    }
+    .confidence-box {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        padding: 0.85rem 1rem;
+        color: #1e3a8a;
+        line-height: 1.6;
     }
     .status-good {
         color: #0f766e;
@@ -196,6 +249,10 @@ def load_models() -> tuple[dict[str, object], str]:
         return models, "ملفات النماذج المحفوظة"
     except (Exception, InconsistentVersionWarning):
         training_df = pd.read_csv(TRAINING_DATA_PATH, low_memory=False)
+        training_df = training_df.sample(
+            n=min(20000, len(training_df)),
+            random_state=42,
+        )
         X, y, numeric_features, categorical_features = make_enhanced_model_frame(training_df)
         fallback_models = make_models(
             numeric_features=numeric_features,
@@ -209,7 +266,7 @@ def load_models() -> tuple[dict[str, object], str]:
         }
         for model in models.values():
             model.fit(X, y)
-        return models, "إعادة تدريب داخل بيئة Streamlit"
+        return models, "إعادة تدريب مختصر داخل بيئة Streamlit"
 
 
 @st.cache_data(show_spinner=False)
@@ -367,35 +424,201 @@ def comparison_chart(values: dict[str, float]) -> None:
     st.bar_chart(chart_data, height=260)
 
 
+def common_value(series: pd.Series) -> str:
+    values = series.dropna().astype(str)
+    if values.empty:
+        return ""
+    return values.mode().iloc[0]
+
+
+def format_percent(value: float) -> str:
+    return f"{value * 100:.1f}%"
+
+
+def response_summary(training_df: pd.DataFrame) -> dict[str, float]:
+    response = training_df[TARGET_COL].dropna()
+    return {
+        "count": float(len(response)),
+        "mean": float(response.mean()),
+        "median": float(response.median()),
+        "p90": float(response.quantile(0.9)),
+        "p95": float(response.quantile(0.95)),
+        "slow_share": float((response > SLOW_RESPONSE_LIMIT).mean()),
+    }
+
+
+def best_model_label(comparison_df: pd.DataFrame) -> tuple[str, float]:
+    if comparison_df.empty or "MAE" not in comparison_df.columns:
+        return "غير متوفر", 0.0
+    best = comparison_df.sort_values("MAE", ascending=True).iloc[0]
+    return arabic_model_name(str(best["Algorithm"])), float(best["MAE"])
+
+
+def borough_summary(training_df: pd.DataFrame) -> pd.DataFrame:
+    global_mean = training_df[TARGET_COL].mean()
+    summary = (
+        training_df.groupby("BOROUGH")
+        .agg(
+            الحالات=(TARGET_COL, "count"),
+            المتوسط=(TARGET_COL, "mean"),
+            الوسيط=(TARGET_COL, "median"),
+            P90=(TARGET_COL, lambda s: s.quantile(0.9)),
+            نسبة_أعلى_من_15=(TARGET_COL, lambda s: (s > SLOW_RESPONSE_LIMIT).mean()),
+        )
+        .reset_index()
+    )
+    summary["المنطقة"] = summary["BOROUGH"].map(format_borough)
+    summary["فرصة_التحسين"] = (
+        (summary["المتوسط"] - global_mean).clip(lower=0) * summary["الحالات"]
+    )
+    return (
+        summary[
+            [
+                "المنطقة",
+                "الحالات",
+                "المتوسط",
+                "الوسيط",
+                "P90",
+                "نسبة_أعلى_من_15",
+                "فرصة_التحسين",
+            ]
+        ]
+        .sort_values(["فرصة_التحسين", "المتوسط"], ascending=False)
+        .round(2)
+    )
+
+
+def dispatch_area_summary(training_df: pd.DataFrame, min_cases: int = 80) -> pd.DataFrame:
+    global_mean = training_df[TARGET_COL].mean()
+    summary = (
+        training_df.groupby("INCIDENT_DISPATCH_AREA")
+        .agg(
+            المنطقة=("BOROUGH", common_value),
+            الحالات=(TARGET_COL, "count"),
+            المتوسط=(TARGET_COL, "mean"),
+            P90=(TARGET_COL, lambda s: s.quantile(0.9)),
+            تأخير_الإرسال_دقائق=("DISPATCH_RESPONSE_SECONDS_QY", lambda s: s.mean() / 60),
+            نسبة_أعلى_من_15=(TARGET_COL, lambda s: (s > SLOW_RESPONSE_LIMIT).mean()),
+        )
+        .reset_index()
+        .query("الحالات >= @min_cases")
+    )
+    summary["الأولوية"] = np.select(
+        [
+            (summary["المتوسط"] >= global_mean + 1.25) & (summary["نسبة_أعلى_من_15"] >= 0.2),
+            summary["المتوسط"] >= global_mean + 0.5,
+        ],
+        ["عالية", "متوسطة"],
+        default="مراقبة",
+    )
+    summary["المنطقة"] = summary["المنطقة"].map(format_borough)
+    return (
+        summary.rename(
+            columns={
+                "INCIDENT_DISPATCH_AREA": "منطقة الإرسال",
+                "الحالات": "عدد الحالات",
+                "المتوسط": "متوسط الاستجابة",
+                "P90": "P90",
+                "تأخير_الإرسال_دقائق": "متوسط تأخير الإرسال",
+                "نسبة_أعلى_من_15": "نسبة أعلى من 15 دقيقة",
+            }
+        )
+        .sort_values(["الأولوية", "متوسط الاستجابة"], ascending=[True, False])
+        .round(2)
+    )
+
+
+def incident_summary(training_df: pd.DataFrame, min_cases: int = 80) -> pd.DataFrame:
+    summary = (
+        training_df.groupby("INCIDENT_CLASSIFICATION")
+        .agg(
+            الحالات=(TARGET_COL, "count"),
+            المتوسط=(TARGET_COL, "mean"),
+            P90=(TARGET_COL, lambda s: s.quantile(0.9)),
+            نسبة_أعلى_من_15=(TARGET_COL, lambda s: (s > SLOW_RESPONSE_LIMIT).mean()),
+        )
+        .reset_index()
+        .query("الحالات >= @min_cases")
+    )
+    summary["نوع البلاغ"] = summary["INCIDENT_CLASSIFICATION"].map(format_incident)
+    return (
+        summary[
+            ["نوع البلاغ", "الحالات", "المتوسط", "P90", "نسبة_أعلى_من_15"]
+        ]
+        .rename(
+            columns={
+                "الحالات": "عدد الحالات",
+                "المتوسط": "متوسط الاستجابة",
+                "نسبة_أعلى_من_15": "نسبة أعلى من 15 دقيقة",
+            }
+        )
+        .sort_values("متوسط الاستجابة", ascending=False)
+        .round(2)
+    )
+
+
+def model_quality_table(case_df: pd.DataFrame) -> pd.DataFrame:
+    actual = case_df["Actual_Response_Time_Minutes"]
+    rows = []
+    model_arabic = {
+        "Linear_Regression": "الانحدار الخطي",
+        "Random_Forest": "الغابة العشوائية",
+        "XGBoost": "XGBoost",
+        "LightGBM": "LightGBM",
+        "Stacking_Ensemble": "نموذج التكديس",
+    }
+    for column in [c for c in case_df.columns if c.endswith("_Predicted_Minutes")]:
+        key = column.replace("_Predicted_Minutes", "")
+        error = (case_df[column] - actual).abs()
+        rows.append(
+            {
+                "النموذج": model_arabic.get(key, key),
+                "متوسط الخطأ": error.mean(),
+                "الوسيط": error.median(),
+                "ضمن 5 دقائق": (error <= 5).mean(),
+                "ضمن 10 دقائق": (error <= 10).mean(),
+                "أكبر خطأ": error.max(),
+            }
+        )
+    return pd.DataFrame(rows).sort_values("متوسط الخطأ").round(2)
+
+
+def render_hero() -> None:
+    st.markdown(
+        """
+        <div class="hero-panel">
+            <h1>لوحة إدارة زمن استجابة الإسعاف</h1>
+            <p>
+            عرض تنفيذي مبسط يوضح مستوى الخدمة الحالي، أماكن التأخير، وأفضل فرص
+            التحسين. صممت هذه الصفحة لتكون مفهومة في اجتماع الإدارة بدون شرح تقني
+            طويل عن الخوارزميات.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_sidebar(
     training_df: pd.DataFrame,
     comparison_df: pd.DataFrame,
     model_source: str,
 ) -> None:
-    st.sidebar.header("حالة المشروع")
-    st.sidebar.metric("بيانات التدريب", f"{len(training_df):,} سجل")
-    st.sidebar.metric("عدد النماذج", str(len(comparison_df)))
-    st.sidebar.metric("مصدر النماذج", model_source)
+    summary = response_summary(training_df)
+    best_name, best_mae = best_model_label(comparison_df)
+    st.sidebar.header("ملخص سريع")
+    st.sidebar.metric("عدد الحالات", f"{int(summary['count']):,}")
+    st.sidebar.metric("متوسط الاستجابة", format_minutes(summary["mean"]))
+    st.sidebar.metric("أفضل نموذج", best_name)
     st.sidebar.caption(
-        "MAE يعني متوسط الخطأ بالدقائق. RMSE يعاقب الأخطاء الكبيرة أكثر. "
-        "كلما كانت القيم أقل كان النموذج أفضل."
-    )
-    st.sidebar.dataframe(
-        comparison_for_display(comparison_df),
-        hide_index=True,
-        use_container_width=True,
+        f"متوسط خطأ أفضل نموذج: {format_minutes(best_mae)}. "
+        "الأرقام هنا للعرض الإداري ودعم القرار، وليست بديلا عن بروتوكولات التشغيل."
     )
     st.sidebar.divider()
-    st.sidebar.caption("الملفات المستخدمة في تطبيق الويب")
-    st.sidebar.code(
-        "data/processed/ems_training_dataset_500000.csv\n"
-        "outputs/models/linear_regression.joblib\n"
-        "outputs/models/random_forest_regressor.joblib\n"
-        "outputs/models/xgboost.joblib\n"
-        "outputs/models/lightgbm.joblib\n"
-        "outputs/models/stacking_ensemble.joblib\n"
-        "outputs/reports/case_level_model_predictions.csv",
-        language="text",
+    st.sidebar.caption("مصدر النماذج")
+    st.sidebar.write(model_source)
+    st.sidebar.caption(
+        "ابدأ من الملخص التنفيذي، ثم انتقل إلى فرص التحسين لمعرفة أين تركز الموارد."
     )
 
 
@@ -1079,6 +1302,374 @@ def render_causal_analysis(training_df: pd.DataFrame) -> None:
     """)
 
 
+def percent_display(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    display_df = df.copy()
+    for column in columns:
+        if column in display_df.columns:
+            display_df[column] = (display_df[column] * 100).round(1)
+    return display_df
+
+
+def render_executive_overview(
+    training_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    case_df: pd.DataFrame,
+) -> None:
+    summary = response_summary(training_df)
+    best_name, best_mae = best_model_label(comparison_df)
+    quality = model_quality_table(case_df)
+    best_quality = quality.iloc[0] if not quality.empty else None
+
+    st.subheader("الملخص التنفيذي")
+    st.markdown(
+        """
+        <div class="section-note">
+        هذه الصفحة تجيب عن ثلاثة أسئلة للإدارة: ما مستوى الخدمة الحالي؟ أين تظهر
+        أكبر فرص التحسين؟ وهل يمكن استخدام النموذج لدعم التخطيط اليومي؟
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    kpi_cols = st.columns(5)
+    kpi_cols[0].metric("الحالات المستخدمة", f"{int(summary['count']):,}")
+    kpi_cols[1].metric("متوسط الاستجابة", format_minutes(summary["mean"]))
+    kpi_cols[2].metric("الوسيط", format_minutes(summary["median"]))
+    kpi_cols[3].metric("P90", format_minutes(summary["p90"]))
+    kpi_cols[4].metric("أكثر من 15 دقيقة", format_percent(summary["slow_share"]))
+
+    st.markdown(
+        f"""
+        <p class="plain-explain">
+        الوسيط يعني أن نصف الحالات كانت أسرع منه. P90 يعني أن 90% من الحالات
+        وصلت قبل هذه القيمة، لذلك هو مؤشر مهم للإدارة لأنه يكشف الحالات البطيئة
+        وليس المتوسط فقط. أفضل نموذج حاليا هو <b>{best_name}</b> بمتوسط خطأ
+        تقريبي <b>{format_minutes(best_mae)}</b>.
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    left, right = st.columns([1.1, 1])
+    with left:
+        st.markdown("##### الأداء حسب المنطقة")
+        borough_df = borough_summary(training_df)
+        display_df = percent_display(borough_df, ["نسبة_أعلى_من_15"])
+        st.dataframe(
+            display_df.rename(
+                columns={
+                    "الحالات": "عدد الحالات",
+                    "المتوسط": "متوسط الاستجابة",
+                    "الوسيط": "الوسيط",
+                    "نسبة_أعلى_من_15": "نسبة أعلى من 15 دقيقة %",
+                    "فرصة_التحسين": "دقائق قابلة للتحسين",
+                }
+            ).head(8),
+            hide_index=True,
+            use_container_width=True,
+        )
+    with right:
+        st.markdown("##### ساعات الضغط الأعلى")
+        hourly = (
+            training_df.groupby("Hour")[TARGET_COL]
+            .mean()
+            .sort_index()
+            .round(2)
+        )
+        st.line_chart(hourly, height=260)
+        peak_hour = int(hourly.idxmax())
+        st.info(
+            f"أعلى متوسط استجابة يظهر حول الساعة {peak_hour}:00. "
+            "هذا يساعد الإدارة على مراجعة التوزيع المناوبي ونقاط التمركز."
+        )
+
+    st.markdown("##### رسالة للإدارة")
+    if best_quality is not None:
+        st.markdown(
+            f"""
+            <div class="recommendation-box">
+            النموذج مناسب كأداة دعم قرار للتخطيط والمقارنة بين السيناريوهات، وليس
+            كقرار تشغيلي منفرد. أفضل نتيجة تحقق متوسط خطأ
+            <b>{format_minutes(float(best_quality["متوسط الخطأ"]))}</b>، و
+            <b>{format_percent(float(best_quality["ضمن 10 دقائق"]))}</b>
+            من حالات الاختبار كانت ضمن 10 دقائق من الزمن الحقيقي.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def render_improvement_opportunities(training_df: pd.DataFrame) -> None:
+    st.subheader("فرص التحسين وأولويات الإدارة")
+    st.markdown(
+        """
+        <div class="section-note">
+        الهدف هنا ليس عرض كل البيانات، بل تحديد أين يجب أن يبدأ النقاش الإداري:
+        المناطق، مناطق الإرسال، أنواع البلاغات، والأوقات التي ترتبط باستجابة أبطأ.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    tab_area, tab_incident, tab_time = st.tabs(
+        ["مناطق الإرسال", "أنواع البلاغات", "الوقت والذروة"]
+    )
+    with tab_area:
+        area_df = dispatch_area_summary(training_df).head(15)
+        display_df = percent_display(area_df, ["نسبة أعلى من 15 دقيقة"])
+        st.dataframe(
+            display_df,
+            hide_index=True,
+            use_container_width=True,
+        )
+        if not area_df.empty:
+            top = area_df.iloc[0]
+            st.markdown(
+                f"""
+                <div class="recommendation-box">
+                أولوية عملية: راجع منطقة الإرسال <b>{top["منطقة الإرسال"]}</b>
+                لأنها تسجل متوسط استجابة <b>{format_minutes(float(top["متوسط الاستجابة"]))}</b>.
+                راجع التمركز، التغطية وقت الذروة، وتأخير الإرسال في هذه المنطقة.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    with tab_incident:
+        incident_df = incident_summary(training_df).head(12)
+        display_df = percent_display(incident_df, ["نسبة أعلى من 15 دقيقة"])
+        st.dataframe(display_df, hide_index=True, use_container_width=True)
+        st.caption(
+            "الجدول يعرض أنواع البلاغات ذات متوسط استجابة أعلى، بشرط وجود عدد كاف من الحالات."
+        )
+
+    with tab_time:
+        by_hour = (
+            training_df.groupby("Hour")
+            .agg(
+                عدد_الحالات=(TARGET_COL, "count"),
+                متوسط_الاستجابة=(TARGET_COL, "mean"),
+                نسبة_أعلى_من_15=(TARGET_COL, lambda s: (s > SLOW_RESPONSE_LIMIT).mean()),
+            )
+            .reset_index()
+            .sort_values("متوسط_الاستجابة", ascending=False)
+            .head(10)
+            .round(2)
+        )
+        st.dataframe(
+            percent_display(by_hour, ["نسبة_أعلى_من_15"]).rename(
+                columns={
+                    "Hour": "الساعة",
+                    "نسبة_أعلى_من_15": "نسبة أعلى من 15 دقيقة %",
+                }
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.markdown(
+            """
+            <p class="plain-explain">
+            استخدام هذا القسم في اجتماع الإدارة: اختر أعلى ساعتين أو ثلاث ساعات،
+            ثم قارنهما مع جدول المناوبات ونقاط تمركز الوحدات. إذا تكرر التأخير
+            في نفس الفترة، فهذا يعطي مبررا لإعادة توزيع الموارد مؤقتا.
+            </p>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def render_management_prediction(
+    training_df: pd.DataFrame,
+    models: dict[str, object],
+) -> None:
+    st.subheader("محاكاة قرار تشغيلي")
+    st.markdown(
+        """
+        <div class="section-note">
+        استخدم هذا القسم كسيناريو في العرض: اختر منطقة، نوع بلاغ، وقت، ومستوى
+        خطورة. التطبيق يعطي زمنا متوقعا يساعد الإدارة على مقارنة السيناريوهات
+        قبل تغيير التمركز أو الموارد.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    render_new_prediction(training_df, models)
+
+
+def render_model_confidence(
+    case_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+) -> None:
+    st.subheader("ثقة النموذج بلغة إدارية")
+    st.markdown(
+        """
+        <div class="section-note">
+        هذا القسم يشرح جودة النموذج بطريقة مفهومة: كم دقيقة يخطئ في المتوسط؟
+        وكم مرة يكون قريباً من الزمن الحقيقي؟
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    quality = model_quality_table(case_df)
+    if quality.empty:
+        st.warning("لا توجد بيانات اختبار كافية لعرض جودة النموذج.")
+        return
+
+    display_quality = percent_display(quality, ["ضمن 5 دقائق", "ضمن 10 دقائق"])
+    st.dataframe(
+        display_quality.rename(
+            columns={
+                "ضمن 5 دقائق": "ضمن 5 دقائق %",
+                "ضمن 10 دقائق": "ضمن 10 دقائق %",
+            }
+        ),
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    best = quality.iloc[0]
+    st.markdown(
+        f"""
+        <div class="confidence-box">
+        أفضل نموذج في بيانات الاختبار هو <b>{best["النموذج"]}</b>. متوسط الخطأ
+        لديه <b>{format_minutes(float(best["متوسط الخطأ"]))}</b>. معنى ذلك:
+        إذا توقع النموذج 10 دقائق، فالنتيجة الفعلية قد تختلف بعدة دقائق، لذلك
+        يستخدم للتخطيط وتحديد المخاطر وليس لتحديد قرار إسعافي لحالة فردية.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("##### مقارنة MAE و RMSE")
+    st.dataframe(
+        comparison_for_display(comparison_df),
+        hide_index=True,
+        use_container_width=True,
+    )
+    st.caption(
+        "MAE هو متوسط الخطأ بالدقائق. RMSE يعاقب الأخطاء الكبيرة، لذلك ارتفاعه يعني وجود حالات يصعب توقعها."
+    )
+
+
+def render_data_context(training_df: pd.DataFrame) -> None:
+    st.subheader("البيانات المستخدمة: القوة، المشاكل، والحدود")
+    parsed_dates = pd.to_datetime(training_df["INCIDENT_DATETIME"], errors="coerce")
+    valid_dates = parsed_dates.dropna()
+    missing = (
+        training_df.isna()
+        .mean()
+        .sort_values(ascending=False)
+        .head(8)
+        .reset_index()
+    )
+    missing.columns = ["الحقل", "نسبة القيم الناقصة"]
+
+    top_cols = st.columns(4)
+    top_cols[0].metric("عدد السجلات", f"{len(training_df):,}")
+    top_cols[1].metric("عدد الحقول", str(len(training_df.columns)))
+    top_cols[2].metric("المناطق", str(training_df["BOROUGH"].nunique()))
+    top_cols[3].metric("مناطق الإرسال", str(training_df["INCIDENT_DISPATCH_AREA"].nunique()))
+
+    if not valid_dates.empty:
+        st.caption(
+            f"الفترة الزمنية في ملف العرض: من {valid_dates.min().date()} إلى {valid_dates.max().date()}."
+        )
+
+    st.markdown("##### ما هي البيانات؟")
+    st.write(
+        "استخدمنا سجلات حوادث EMS بعد تنظيفها وتجهيزها للنموذج. كل سجل يمثل بلاغا "
+        "ويتضمن وقت البلاغ، وقت الوصول الأول للموقع، المنطقة، منطقة الإرسال، نوع "
+        "البلاغ، مستوى الخطورة، وتأخير الإرسال. المتغير المستهدف هو زمن الاستجابة "
+        "بالدقائق من وقت البلاغ حتى أول وصول للموقع."
+    )
+
+    strengths, issues = st.columns(2)
+    with strengths:
+        st.markdown("##### الجوانب القوية")
+        st.markdown(
+            """
+            - حجم بيانات مناسب للعرض والتحليل، وليس مجرد عينة صغيرة.
+            - يحتوي على وقت ومكان ونوع بلاغ وخطورة، وهي عوامل عملية تفهمها الإدارة.
+            - يحتوي على الزمن الحقيقي للاستجابة، لذلك يمكن قياس النموذج مقابل الواقع.
+            - يسمح بتحديد مناطق وساعات وأنواع بلاغات تحتاج مراجعة تشغيلية.
+            """
+        )
+    with issues:
+        st.markdown("##### المشاكل والقيود")
+        st.markdown(
+            """
+            - البيانات تاريخية؛ إذا تغيرت الموارد أو السياسات فقد يتغير الأداء الفعلي.
+            - بعض الحقول قد تكون ناقصة أو غير متسقة، مثل رموز التصنيف أو المنطقة.
+            - النموذج لا يعرف كل العوامل الخارجية مثل الطقس، الازدحام المباشر، توفر الوحدات، أو إغلاق الطرق.
+            - النتائج احتمالية وداعمة للقرار، وليست وعدا بزمن وصول لحالة فردية.
+            """
+        )
+
+    st.markdown("##### جودة البيانات")
+    st.dataframe(
+        percent_display(missing, ["نسبة القيم الناقصة"]).rename(
+            columns={"نسبة القيم الناقصة": "نسبة القيم الناقصة %"}
+        ),
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    st.markdown("##### ماذا نحتاج لتحسين النسخة القادمة؟")
+    st.markdown(
+        """
+        - إضافة حالة توفر الوحدات وقت البلاغ.
+        - إضافة بيانات الطقس والازدحام وأحداث المدينة.
+        - ربط الموقع بإحداثيات أو مناطق خدمة أدق من المنطقة العامة.
+        - تحديث النموذج بشكل دوري حتى يعكس الأداء الحالي وليس التاريخي فقط.
+        """
+    )
+
+
+def render_technical_details(
+    training_df: pd.DataFrame,
+    case_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    models: dict[str, object],
+) -> None:
+    st.subheader("Technical Details / التفاصيل التقنية")
+    st.caption(
+        "هذا التبويب يجمع التحليلات التقنية المتقدمة في مكان واحد حتى تبقى الصفحة الرئيسية مناسبة للإدارة."
+    )
+    tech_tabs = st.tabs(
+        [
+            "حالة محفوظة",
+            "الأسباب الجذرية",
+            "SHAP",
+            "تحليل الأخطاء",
+            "تحليل سببي",
+            "النماذج والبيانات",
+        ]
+    )
+    with tech_tabs[0]:
+        render_case_checker(case_df)
+    with tech_tabs[1]:
+        render_root_cause_dashboard(training_df)
+    with tech_tabs[2]:
+        render_shap_analysis(training_df, models)
+    with tech_tabs[3]:
+        render_residual_analysis(training_df, models)
+    with tech_tabs[4]:
+        render_causal_analysis(training_df)
+    with tech_tabs[5]:
+        st.markdown("##### مقارنة النماذج")
+        st.dataframe(
+            comparison_for_display(comparison_df),
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.markdown("##### النماذج المتوفرة")
+        for name in models.keys():
+            st.write(f"- {arabic_model_name(name)} ({name})")
+        st.markdown("##### عينة من البيانات")
+        st.dataframe(training_df.head(20), use_container_width=True)
+
+
 def main() -> None:
     require_files()
     training_df = load_training_data()
@@ -1088,51 +1679,30 @@ def main() -> None:
 
     render_sidebar(training_df, comparison_df, model_source)
 
-    st.title("توقع زمن استجابة الإسعاف")
-    st.caption(
-        "تطبيق ويب متقدم لتوقع زمن الاستجابة وتحليل الأسباب الجذرية "
-        "باستخدام خمس خوارزميات تعلم آلي."
-    )
+    render_hero()
 
-    tab_new, tab_case, tab_root, tab_shap, tab_residual, tab_causal, tab_data = st.tabs(
+    tab_exec, tab_ops, tab_predict, tab_confidence, tab_data, tab_technical = st.tabs(
         [
-            "توقع جديد",
-            "فحص حالة محفوظة",
-            "الأسباب الجذرية",
-            "تحليل SHAP",
-            "تحليل الأخطاء",
-            "تحليل سببي",
-            "ملخص البيانات",
+            "الملخص التنفيذي",
+            "فرص التحسين",
+            "محاكاة القرار",
+            "ثقة النموذج",
+            "البيانات والحدود",
+            "التفاصيل التقنية",
         ]
     )
-    with tab_new:
-        render_new_prediction(training_df, models)
-    with tab_case:
-        render_case_checker(case_df)
-    with tab_root:
-        render_root_cause_dashboard(training_df)
-    with tab_shap:
-        render_shap_analysis(training_df, models)
-    with tab_residual:
-        render_residual_analysis(training_df, models)
-    with tab_causal:
-        render_causal_analysis(training_df)
+    with tab_exec:
+        render_executive_overview(training_df, comparison_df, case_df)
+    with tab_ops:
+        render_improvement_opportunities(training_df)
+    with tab_predict:
+        render_management_prediction(training_df, models)
+    with tab_confidence:
+        render_model_confidence(case_df, comparison_df)
     with tab_data:
-        st.subheader("ملخص البيانات والنماذج")
-        st.write(
-            f"يستخدم التطبيق مجموعة بيانات محفوظة تحتوي على {len(training_df):,} سجل، "
-            f"مع {len(models)} نماذج مدربة."
-        )
-        st.dataframe(
-            comparison_for_display(comparison_df),
-            hide_index=True,
-            use_container_width=True,
-        )
-        st.markdown("##### النماذج المتوفرة")
-        for name in models.keys():
-            st.write(f"- {arabic_model_name(name)} ({name})")
-        st.write("معاينة بيانات التدريب")
-        st.dataframe(training_df.head(20), use_container_width=True)
+        render_data_context(training_df)
+    with tab_technical:
+        render_technical_details(training_df, case_df, comparison_df, models)
 
 
 if __name__ == "__main__":
