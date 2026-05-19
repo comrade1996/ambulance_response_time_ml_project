@@ -5,17 +5,24 @@ from pathlib import Path
 
 import pandas as pd
 
+import numpy as np
+
 from .config import (
     BASE_CATEGORICAL_FEATURES,
     CLASSIFICATION_SOURCE_COLUMNS,
+    CONTEXTUAL_FEATURES,
+    CYCLICAL_FEATURES,
+    ENHANCED_NUMERIC_FEATURES,
     FIRST_ON_SCENE_DATETIME,
     INCIDENT_DATETIME,
+    INTERACTION_FEATURES,
     NUMERIC_FEATURES,
     OPTIONAL_FEATURE_COLUMNS,
     REQUIRED_COLUMNS,
     RESPONSE_TIME_MAX,
     RESPONSE_TIME_MIN,
     TARGET,
+    TARGET_ENCODED_FEATURES,
 )
 
 
@@ -125,6 +132,21 @@ def clean_and_engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     cleaned["DayOfWeek"] = cleaned[INCIDENT_DATETIME].dt.dayofweek
     cleaned["Month"] = cleaned[INCIDENT_DATETIME].dt.month
 
+    if "DISPATCH_RESPONSE_SECONDS_QY" in cleaned.columns:
+        cleaned["DISPATCH_RESPONSE_SECONDS_QY"] = pd.to_numeric(
+            cleaned["DISPATCH_RESPONSE_SECONDS_QY"], errors="coerce"
+        ).fillna(0).clip(lower=0, upper=600)
+
+    if "HELD_INDICATOR" in cleaned.columns:
+        cleaned["IsHeld"] = (cleaned["HELD_INDICATOR"].astype(str).str.strip().str.upper() == "Y").astype(int)
+    else:
+        cleaned["IsHeld"] = 0
+
+    if "REOPEN_INDICATOR" in cleaned.columns:
+        cleaned["IsReopen"] = (cleaned["REOPEN_INDICATOR"].astype(str).str.strip().str.upper() == "Y").astype(int)
+    else:
+        cleaned["IsReopen"] = 0
+
     for column in NUMERIC_FEATURES:
         if column in cleaned.columns:
             cleaned[column] = pd.to_numeric(cleaned[column], errors="coerce")
@@ -184,3 +206,102 @@ def parse_datetime_column(series: pd.Series) -> pd.Series:
     if parsed.notna().sum() == 0:
         parsed = pd.to_datetime(series, errors="coerce")
     return parsed
+
+
+def add_cyclical_features(df: pd.DataFrame) -> pd.DataFrame:
+    enhanced = df.copy()
+    if "Hour" in enhanced.columns:
+        enhanced["Hour_sin"] = np.sin(2 * np.pi * enhanced["Hour"] / 24)
+        enhanced["Hour_cos"] = np.cos(2 * np.pi * enhanced["Hour"] / 24)
+    if "DayOfWeek" in enhanced.columns:
+        enhanced["DayOfWeek_sin"] = np.sin(2 * np.pi * enhanced["DayOfWeek"] / 7)
+        enhanced["DayOfWeek_cos"] = np.cos(2 * np.pi * enhanced["DayOfWeek"] / 7)
+    if "Month" in enhanced.columns:
+        enhanced["Month_sin"] = np.sin(2 * np.pi * (enhanced["Month"] - 1) / 12)
+        enhanced["Month_cos"] = np.cos(2 * np.pi * (enhanced["Month"] - 1) / 12)
+    return enhanced
+
+
+def add_contextual_features(df: pd.DataFrame) -> pd.DataFrame:
+    enhanced = df.copy()
+    if "DayOfWeek" in enhanced.columns:
+        enhanced["IsWeekend"] = (enhanced["DayOfWeek"] >= 5).astype(int)
+    if "Hour" in enhanced.columns:
+        enhanced["IsNight"] = ((enhanced["Hour"] >= 22) | (enhanced["Hour"] <= 5)).astype(int)
+        enhanced["IsRushHour"] = enhanced["Hour"].isin([7, 8, 9, 17, 18, 19]).astype(int)
+    return enhanced
+
+
+def add_target_encoding(df: pd.DataFrame, smoothing: int = 20) -> pd.DataFrame:
+    enhanced = df.copy()
+    global_mean = enhanced[TARGET].mean() if TARGET in enhanced.columns else 0.0
+    if TARGET in enhanced.columns and "INCIDENT_CLASSIFICATION" in enhanced.columns:
+        stats = enhanced.groupby("INCIDENT_CLASSIFICATION")[TARGET].agg(["mean", "count"])
+        smooth = (stats["count"] * stats["mean"] + smoothing * global_mean) / (stats["count"] + smoothing)
+        enhanced["Classification_TargetEnc"] = enhanced["INCIDENT_CLASSIFICATION"].map(smooth).fillna(global_mean)
+    if TARGET in enhanced.columns and "INCIDENT_DISPATCH_AREA" in enhanced.columns:
+        stats = enhanced.groupby("INCIDENT_DISPATCH_AREA")[TARGET].agg(["mean", "count"])
+        smooth = (stats["count"] * stats["mean"] + smoothing * global_mean) / (stats["count"] + smoothing)
+        enhanced["DispatchArea_TargetEnc"] = enhanced["INCIDENT_DISPATCH_AREA"].map(smooth).fillna(global_mean)
+    if TARGET in enhanced.columns and "BOROUGH" in enhanced.columns:
+        stats = enhanced.groupby("BOROUGH")[TARGET].agg(["mean", "count"])
+        smooth = (stats["count"] * stats["mean"] + smoothing * global_mean) / (stats["count"] + smoothing)
+        enhanced["Borough_TargetEnc"] = enhanced["BOROUGH"].map(smooth).fillna(global_mean)
+    return enhanced
+
+
+def add_interaction_features(df: pd.DataFrame) -> pd.DataFrame:
+    enhanced = df.copy()
+    if TARGET in enhanced.columns and "BOROUGH" in enhanced.columns and "Hour" in enhanced.columns:
+        borough_hour_avg = enhanced.groupby(["BOROUGH", "Hour"])[TARGET].transform("mean")
+        enhanced["Borough_Hour_Avg"] = borough_hour_avg
+    if TARGET in enhanced.columns and "INCIDENT_CLASSIFICATION" in enhanced.columns and "INITIAL_SEVERITY_LEVEL_CODE" in enhanced.columns:
+        cls_sev_avg = enhanced.groupby(["INCIDENT_CLASSIFICATION", "INITIAL_SEVERITY_LEVEL_CODE"])[TARGET].transform("mean")
+        enhanced["Classification_Severity_Avg"] = cls_sev_avg
+    if TARGET in enhanced.columns and "INCIDENT_DISPATCH_AREA" in enhanced.columns and "Hour" in enhanced.columns:
+        dispatch_hour_avg = enhanced.groupby(["INCIDENT_DISPATCH_AREA", "Hour"])[TARGET].transform("mean")
+        enhanced["DispatchArea_Hour_Avg"] = dispatch_hour_avg
+    return enhanced
+
+
+def make_enhanced_model_frame(
+    df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.Series, list[str], list[str]]:
+    enhanced = add_cyclical_features(df)
+    enhanced = add_contextual_features(enhanced)
+    enhanced = add_target_encoding(enhanced)
+    enhanced = add_interaction_features(enhanced)
+    numeric_features = [col for col in ENHANCED_NUMERIC_FEATURES if col in enhanced.columns]
+    categorical_features = [col for col in BASE_CATEGORICAL_FEATURES if col in enhanced.columns]
+    categorical_features.extend([col for col in OPTIONAL_FEATURE_COLUMNS if col in enhanced.columns])
+    features = numeric_features + categorical_features
+    data = enhanced[features + [TARGET]].dropna().copy()
+    X = data[features]
+    y = data[TARGET]
+    return X, y, numeric_features, categorical_features
+
+
+def compute_interaction_lookup(df: pd.DataFrame) -> dict:
+    lookup = {}
+    global_mean = df[TARGET].mean() if TARGET in df.columns else 0.0
+    lookup["_global_mean"] = global_mean
+    if TARGET in df.columns and "BOROUGH" in df.columns and "Hour" in df.columns:
+        lookup["Borough_Hour_Avg"] = df.groupby(["BOROUGH", "Hour"])[TARGET].mean().to_dict()
+    if TARGET in df.columns and "INCIDENT_CLASSIFICATION" in df.columns and "INITIAL_SEVERITY_LEVEL_CODE" in df.columns:
+        lookup["Classification_Severity_Avg"] = df.groupby(["INCIDENT_CLASSIFICATION", "INITIAL_SEVERITY_LEVEL_CODE"])[TARGET].mean().to_dict()
+    if TARGET in df.columns and "INCIDENT_DISPATCH_AREA" in df.columns and "Hour" in df.columns:
+        lookup["DispatchArea_Hour_Avg"] = df.groupby(["INCIDENT_DISPATCH_AREA", "Hour"])[TARGET].mean().to_dict()
+    smoothing = 20
+    if TARGET in df.columns and "INCIDENT_CLASSIFICATION" in df.columns:
+        stats = df.groupby("INCIDENT_CLASSIFICATION")[TARGET].agg(["mean", "count"])
+        smooth = (stats["count"] * stats["mean"] + smoothing * global_mean) / (stats["count"] + smoothing)
+        lookup["Classification_TargetEnc"] = smooth.to_dict()
+    if TARGET in df.columns and "INCIDENT_DISPATCH_AREA" in df.columns:
+        stats = df.groupby("INCIDENT_DISPATCH_AREA")[TARGET].agg(["mean", "count"])
+        smooth = (stats["count"] * stats["mean"] + smoothing * global_mean) / (stats["count"] + smoothing)
+        lookup["DispatchArea_TargetEnc"] = smooth.to_dict()
+    if TARGET in df.columns and "BOROUGH" in df.columns:
+        stats = df.groupby("BOROUGH")[TARGET].agg(["mean", "count"])
+        smooth = (stats["count"] * stats["mean"] + smoothing * global_mean) / (stats["count"] + smoothing)
+        lookup["Borough_TargetEnc"] = smooth.to_dict()
+    return lookup

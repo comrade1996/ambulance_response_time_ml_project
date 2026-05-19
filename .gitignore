@@ -5,6 +5,7 @@ __pycache__/
 data/raw/*.csv
 data/processed/cleaned_ems_dispatch_data.csv
 data/processed/ems_training_dataset_10000.csv
+data/processed/ems_training_dataset_500000.csv
 outputs/reports/best_model_predictions.csv
 *.before-link-slide.pptx
 *.before-real-link.pptx
