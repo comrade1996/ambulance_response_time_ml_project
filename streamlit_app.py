@@ -20,7 +20,16 @@ from src.ambulance_response_time_ml.modeling import make_models, residual_analys
 
 
 ROOT = Path(__file__).resolve().parent
-TRAINING_DATA_PATH = ROOT / "data" / "processed" / "ems_training_dataset_deploy.csv"
+TRAINING_DATA_CANDIDATES = [
+    ROOT / "data" / "processed" / "ems_training_dataset_500000.parquet",
+    ROOT / "data" / "processed" / "ems_training_dataset_500000.csv",
+    ROOT / "data" / "processed" / "ems_training_dataset_deploy.csv",
+    ROOT / "data" / "processed" / "ems_training_dataset_100000.csv",
+]
+TRAINING_DATA_PATH = next(
+    (path for path in TRAINING_DATA_CANDIDATES if path.exists()),
+    TRAINING_DATA_CANDIDATES[0],
+)
 CASE_PREDICTIONS_PATH = ROOT / "outputs" / "reports" / "case_level_model_predictions.csv"
 MODEL_COMPARISON_PATH = ROOT / "outputs" / "reports" / "model_comparison.csv"
 LINEAR_MODEL_PATH = ROOT / "outputs" / "models" / "linear_regression.joblib"
@@ -218,6 +227,8 @@ st.markdown(
 
 @st.cache_data(show_spinner=False)
 def load_training_data() -> pd.DataFrame:
+    if TRAINING_DATA_PATH.suffix == ".parquet":
+        return pd.read_parquet(TRAINING_DATA_PATH)
     return pd.read_csv(TRAINING_DATA_PATH, low_memory=False)
 
 
@@ -250,7 +261,7 @@ def load_models() -> tuple[dict[str, object], str]:
                 models["Stacking Ensemble"] = joblib.load(STACKING_MODEL_PATH)
         return models, "ملفات النماذج المحفوظة"
     except (Exception, InconsistentVersionWarning):
-        training_df = pd.read_csv(TRAINING_DATA_PATH, low_memory=False)
+        training_df = load_training_data()
         training_df = training_df.sample(
             n=min(8000, len(training_df)),
             random_state=42,
@@ -275,13 +286,13 @@ def load_models() -> tuple[dict[str, object], str]:
 
 @st.cache_data(show_spinner=False)
 def load_enhanced_data() -> tuple[pd.DataFrame, pd.Series, list[str], list[str]]:
-    training_df = pd.read_csv(TRAINING_DATA_PATH, low_memory=False)
+    training_df = load_training_data()
     return make_enhanced_model_frame(training_df)
 
 
 @st.cache_data(show_spinner=False)
 def get_interaction_lookup() -> dict:
-    training_df = pd.read_csv(TRAINING_DATA_PATH, low_memory=False)
+    training_df = load_training_data()
     return compute_interaction_lookup(training_df)
 
 
@@ -298,7 +309,7 @@ def require_files() -> None:
         st.error("بعض الملفات المطلوبة غير موجودة. شغل أمر التدريب أولا.")
         st.code(
             "python main.py train --data data/raw/EMS_Incident_Dispatch_Data.csv "
-            "--sample-rows 100000 --chunksize 50000 --check-cases 20",
+            "--sample-rows 500000 --chunksize 50000 --check-cases 20",
             language="bash",
         )
         st.write("الملفات الناقصة:")
@@ -405,6 +416,17 @@ def prediction_input_from_payload(payload: dict, model: object) -> pd.DataFrame:
     for col in feature_names:
         if col not in frame.columns:
             frame[col] = 0.0
+    preprocessor = getattr(model, "named_steps", {}).get("preprocessor")
+    if preprocessor is not None and hasattr(preprocessor, "transformers_"):
+        for name, _transformer, columns in preprocessor.transformers_:
+            if name == "categorical":
+                for col in columns:
+                    if col in frame.columns:
+                        frame[col] = frame[col].fillna("").astype(str).str.strip()
+            if name == "numeric":
+                for col in columns:
+                    if col in frame.columns:
+                        frame[col] = pd.to_numeric(frame[col], errors="coerce").fillna(0)
     return frame[feature_names]
 
 

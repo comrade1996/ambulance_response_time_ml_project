@@ -125,9 +125,9 @@ def make_models(
         models["LightGBM"] = lgbm
     if HAS_XGBOOST and HAS_LIGHTGBM:
         estimators = [
-            ("rf", RandomForestRegressor(n_estimators=100, max_depth=12, random_state=random_state, n_jobs=-1)),
-            ("xgb", XGBRegressor(n_estimators=300, max_depth=8, learning_rate=0.05, random_state=random_state, n_jobs=-1, verbosity=0)),
-            ("lgbm", LGBMRegressor(n_estimators=300, max_depth=8, learning_rate=0.05, random_state=random_state, n_jobs=-1, verbose=-1)),
+            ("rf", RandomForestRegressor(n_estimators=100, max_depth=12, random_state=random_state, n_jobs=1)),
+            ("xgb", XGBRegressor(n_estimators=300, max_depth=8, learning_rate=0.05, random_state=random_state, n_jobs=1, verbosity=0)),
+            ("lgbm", LGBMRegressor(n_estimators=300, max_depth=8, learning_rate=0.05, random_state=random_state, n_jobs=1, verbose=-1)),
         ]
         stacking = Pipeline(
             steps=[
@@ -138,7 +138,7 @@ def make_models(
                         estimators=estimators,
                         final_estimator=Ridge(alpha=1.0),
                         cv=3,
-                        n_jobs=-1,
+                        n_jobs=1,
                     ),
                 ),
             ]

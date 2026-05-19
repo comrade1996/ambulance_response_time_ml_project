@@ -12,10 +12,10 @@ data/raw/EMS_incident_dispatch_data_description.xlsx
 ```
 
 The raw CSV is about 6.2 GB and is ignored by git. The deployable project uses
-the saved 100,000-row working dataset:
+the saved 500,000-row working dataset:
 
 ```text
-data/processed/ems_training_dataset_100000.csv
+data/processed/ems_training_dataset_500000.parquet
 ```
 
 ## What One Row Means
@@ -84,12 +84,12 @@ Response_Time_Minutes = FIRST_ON_SCENE_DATETIME - INCIDENT_DATETIME
 The current training/deployment dataset is:
 
 ```text
-data/processed/ems_training_dataset_100000.csv
+data/processed/ems_training_dataset_500000.parquet
 ```
 
-It contains 100,000 cleaned real EMS rows plus one header line in the CSV.
+It contains 500,000 cleaned real EMS rows in a compressed Parquet file.
 
-The case-level prediction file contains 20,000 test rows:
+The case-level prediction file contains 100,000 test rows:
 
 ```text
 outputs/reports/case_level_model_predictions.csv

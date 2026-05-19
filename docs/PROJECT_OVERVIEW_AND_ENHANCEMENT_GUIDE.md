@@ -190,7 +190,7 @@ This is a **supervised regression** problem. The target variable
 
 The raw NYC EMS CSV is ~6.2 GB. To make training practical, the pipeline reads
 it in chunks (`chunksize=50000`) and stops after collecting the desired number
-of clean rows (`--sample-rows 100000`). This avoids loading the entire file into
+of clean rows (`--sample-rows 500000` in the current run). This avoids loading the entire file into
 memory.
 
 ### 3.2 Column Standardization
@@ -311,13 +311,12 @@ is the average of all tree predictions.
   overfit.
 - Cannot extrapolate beyond the range of training data.
 
-### 5.3 Why Two Models?
+### 5.3 Why Multiple Models?
 
-Presenting both models side by side serves two purposes:
+Presenting multiple models side by side serves two purposes:
 
-1. **Validation**: If both models agree, confidence in the prediction is higher.
-   Large disagreement signals that the case is unusual or that the linear
-   assumption does not hold.
+1. **Validation**: If models agree, confidence in the prediction is higher.
+   Large disagreement signals that the case is unusual or model assumptions differ.
 2. **Transparency**: The audience (planners, stakeholders) can see how much
    accuracy improves from the simple baseline to the more complex model.
 
@@ -329,8 +328,8 @@ Presenting both models side by side serves two purposes:
 
 The dataset is split 80/20 with `random_state=42`:
 
-- **80% (80,000 rows)**: Used to train both models.
-- **20% (20,000 rows)**: Held out to evaluate prediction accuracy on unseen
+- **80% (400,000 rows)**: Used to train the models.
+- **20% (100,000 rows)**: Held out to evaluate prediction accuracy on unseen
   data.
 
 ### 6.2 Metrics
@@ -340,16 +339,18 @@ The dataset is split 80/20 with `random_state=42`:
 | **MAE** (Mean Absolute Error) | `mean(|actual - predicted|)` | Average prediction error in minutes. Easy to interpret: "on average the model is off by X minutes." |
 | **RMSE** (Root Mean Squared Error) | `sqrt(mean((actual - predicted)²))` | Penalizes large errors more heavily. If RMSE is much larger than MAE, a few cases have very large errors. |
 
-### 6.3 Current Results (100,000 rows)
+### 6.3 Current Results (500,000 rows)
 
 | Algorithm | MAE (min) | RMSE (min) |
 |---|---:|---:|
-| Random Forest Regressor | 4.96 | 8.71 |
-| Linear Regression | 5.18 | 9.08 |
+| Stacking Ensemble | 3.50 | 5.19 |
+| XGBoost | 3.51 | 5.20 |
+| LightGBM | 3.51 | 5.21 |
+| Random Forest Regressor | 3.60 | 5.32 |
+| Linear Regression | 3.69 | 5.48 |
 
-**Interpretation:** The Random Forest is ~0.2 minutes more accurate on average.
-The gap between MAE (~5) and RMSE (~9) in both models indicates a significant
-number of cases with large prediction errors (long-tail incidents).
+**Interpretation:** The ensemble and boosted-tree models perform best. The gap
+between MAE and RMSE still indicates some large-error long-tail incidents.
 
 ---
 
@@ -497,8 +498,8 @@ search.fit(X_train, y_train)
 
 ### 8.4 Use More Training Data (Medium Impact)
 
-The full raw dataset has millions of rows. Currently only 100,000 are used.
-Increasing to 500,000-1,000,000 rows gives the model more patterns to learn,
+The full raw dataset has millions of rows. Currently 500,000 cleaned rows are
+used. Increasing beyond 500,000 may give the model more patterns to learn,
 especially for rare dispatch areas and incident types.
 
 ### 8.5 Temporal Validation (Important for Reliability)

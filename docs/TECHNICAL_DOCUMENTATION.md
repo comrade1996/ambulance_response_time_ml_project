@@ -11,7 +11,7 @@ Two models are trained and used:
 - Linear Regression
 - Random Forest Regressor
 
-The CLI and the Streamlit app show both model outputs.
+The CLI and the Streamlit app show the available model outputs.
 
 ## Data Contract
 
@@ -123,7 +123,7 @@ Metrics:
 | MAE | Mean absolute error in minutes. Lower is better. |
 | RMSE | Root mean squared error. It penalizes large errors more strongly. Lower is better. |
 
-Latest 100,000-row run:
+Latest 500,000-row run:
 
 | Algorithm | MAE | RMSE |
 |---|---:|---:|
@@ -134,14 +134,14 @@ Latest 100,000-row run:
 
 | Output | Description |
 |---|---|
-| `data/processed/ems_training_dataset_100000.csv` | The 100,000-row working dataset used for training and deployment. |
+| `data/processed/ems_training_dataset_500000.parquet` | The compressed 500,000-row working dataset used for deployment. |
 | `data/processed/cleaned_ems_dispatch_data.csv` | Generated cleaned data file. Ignored by git. |
 | `outputs/models/linear_regression.joblib` | Trained Linear Regression pipeline. |
 | `outputs/models/random_forest_regressor.joblib` | Trained Random Forest pipeline. |
-| `outputs/reports/model_comparison.csv` | MAE and RMSE for both models. |
+| `outputs/reports/model_comparison.csv` | MAE and RMSE for all trained models. |
 | `outputs/reports/case_level_model_predictions.csv` | Case-number-level actual and predicted response times. |
 | `outputs/reports/sample_cases_for_manual_check.csv` | Small sample for spreadsheet checking. |
-| `outputs/reports/model_predictions.csv` | Actual vs predicted values for both models. |
+| `outputs/reports/model_predictions.csv` | Actual vs predicted values for trained models. |
 | `outputs/reports/feature_importance.csv` | Random Forest feature importances. |
 | `outputs/figures/*.png` | EDA and feature-importance charts. |
 
@@ -155,15 +155,15 @@ Current behavior:
 - The first tab is new prediction.
 - Inputs are mostly dropdowns.
 - Dispatch area is filtered by selected borough.
-- Predictions appear automatically for both models.
-- A saved-case tab lets the user compare real response time with both model predictions.
+- Predictions appear automatically for the available models.
+- A saved-case tab lets the user compare real response time with model predictions.
 - A summary tab shows the dataset and model metrics.
 
 The app uses:
 
 ```text
 requirements.txt
-data/processed/ems_training_dataset_deploy.csv
+data/processed/ems_training_dataset_500000.parquet
 outputs/models/linear_regression.joblib
 outputs/models/random_forest_regressor.joblib
 outputs/reports/case_level_model_predictions.csv
@@ -172,7 +172,7 @@ outputs/reports/model_comparison.csv
 
 During deployment, the app first tries to load the saved `.joblib` model files.
 If the cloud runtime cannot unpickle them because of a package-version mismatch,
-the app retrains both models from the saved 100,000-row dataset and uses those
+the app retrains deploy-safe models from the available processed dataset and uses those
 runtime-trained models for prediction.
 
 ## Deployment Notes
@@ -183,7 +183,7 @@ The full raw CSV is ignored because it is several gigabytes:
 data/raw/*.csv
 ```
 
-Deploy only the 100,000-row dataset, model files, and report CSVs required by
+Deploy only the compressed 500,000-row dataset, model files, and report CSVs required by
 the web app. Manual deployment steps are in `docs/WEBAPP_HOSTING_GUIDE.md`.
 
 ## Limitations
