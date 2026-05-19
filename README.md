@@ -56,10 +56,11 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-On Streamlit Cloud, the app first tries to load the saved `.joblib` models. If
-the cloud runtime uses a newer `scikit-learn` version and the saved models
-cannot be opened, the app automatically retrains both models from the saved
-100,000-row dataset and continues running.
+On Streamlit Community Cloud, set the app's Python version to 3.11 in Advanced
+settings. The saved `.joblib` models were trained with `scikit-learn==1.6.1`,
+so `requirements.txt` pins that version to avoid inconsistent model loading.
+If the saved models cannot be opened, the app automatically retrains models
+from the saved 100,000-row dataset and continues running.
 
 ## Train Both Models
 

@@ -135,21 +135,28 @@ outputs/reports/case_level_model_predictions.csv
 outputs/reports/model_comparison.csv
 ```
 
-If dependencies fail, confirm `requirements.txt` includes:
+If dependencies fail, confirm Streamlit Community Cloud is set to Python 3.11
+in the app's Advanced settings and that `requirements.txt` includes pinned
+versions:
 
 ```text
-pandas>=2.0
-numpy>=1.24
-scikit-learn>=1.3
-matplotlib>=3.7
-joblib>=1.3
-openpyxl>=3.1
-streamlit>=1.35
+pandas==2.3.3
+numpy==2.0.2
+scikit-learn==1.6.1
+matplotlib==3.9.4
+joblib==1.5.3
+openpyxl==3.1.5
+streamlit==1.50.0
+xgboost==2.1.4
+lightgbm==4.6.0
+shap==0.49.1
+plotly==6.7.0
 ```
 
-If Streamlit Cloud uses a newer `scikit-learn` version and cannot open the
-saved `.joblib` files, the app automatically retrains both models from
-`data/processed/ems_training_dataset_100000.csv` during startup.
+The saved `.joblib` files were trained with `scikit-learn==1.6.1`. If
+Streamlit Cloud uses a newer `scikit-learn` version and cannot open the saved
+models, the app automatically retrains models from
+`data/processed/ems_training_dataset_deploy.csv` during startup.
 
 If the app is slow on first load, wait for Streamlit to download dependencies
 and load the model files.
